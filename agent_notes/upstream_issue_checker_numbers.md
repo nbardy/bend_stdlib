@@ -1,62 +1,69 @@
-# Draft PR: comparing a long constructor chain no longer overflows the checker
+# Draft bug issue: comparing a long Succ chain overflows the checker
 
-For HigherOrderCO/Bend. Not opened. The change is
+For HigherOrderCO/Bend, as a Bug issue (not a PR: `AGENTS.md` says
+`bend2/bend.ts` is human-written and not to be edited, so the fix is offered
+as a sketch). Not filed yet. The full sketch is
 `agent_notes/patches/checker_compare_overflow.diff` against `main` at
-`ff7a40c`: `bend2/bend.ts` +2 -1, `bend2/main.ts` +4 -1, and a regression test
-`tests/check/nat_long_chain.bend` (fails on 2.0.25, passes patched).
+`ff7a40c`.
 
 ---
 
-**Title:** A constructor's last field is compared by a tail call, so long chains check
+**Title:** Comparing a long Succ chain overflows the checker's stack
 
-**The bug.** `term_compare` compares a constructor's fields inside
-`a.x.every(...)`, so comparing two `Succ` chains recurses once per unit:
+### What you did
+
+`bend big.bend --check-only`
+
+### What happened
+
+```text
+Error: the machine stack overflowed (a deep recursion, or a literal too large to expand)
+```
+
+It checks at `1000n`. `Nat.mul(2n, 100000n) == 200000n`, long lists and
+long strings take the same path.
+
+### The file
 
 ```python
 import Base
+
 law big:
   {Nat.add(100000n, 100000n) == 200000n : Nat}
+
 def big():
   {==}
 ```
 
-On 2.0.25 this fails with "the machine stack overflowed" (it checks at
-`1000n`). The arithmetic is fine; the comparison of the 200000-deep result
-with `200000n` is what recurses. Long lists, strings and words compare
-the same way.
+### bend --version
 
-**The change.**
+bend 2.0.25
 
-1. `term_compare`'s `Ctr` case compares every field but the last inside
-   `every`, and returns the comparison of the last field directly. In
-   strict code JavaScriptCore (bun) makes that a proper tail call, so a
-   chain through last fields (`Succ`, `Con`'s tail, `WCon`'s tail)
-   compares in constant stack.
-2. `book_err` catches an overflow raised while an error is being shown
-   (a false law about a huge term) and reports it as the overflow it
-   already reports, instead of crashing.
+### uname -sm
 
-**Evidence** (Apple M-series, `bun bend2/main.ts`):
+Darwin arm64
 
-| | 2.0.25 | patched |
-|---|---|---|
-| `Nat.add(100000n, 100000n) == 200000n` | stack overflow | checks, 0.7 s |
-| `Nat.mul(2n, 100000n) == 200000n`, `Nat.add(Nat.add(100000n, 1n), 5n) == 100006n` | stack overflow | check |
-| `Nat.add(1000000n, 1000000n) == 2000000n` | stack overflow | checks, 1.1 s |
-| `Nat.add(100n, 1n) == 100n` | error, expected and observed shown | same |
-| `Nat.add(100000n, 1n) == 100000n` | "machine stack overflowed" | same (rejected) |
-| all 1427 files in `tests/*/*.bend`, `--check-only` | baseline | identical output; total time 656 s vs 641 s |
+### clang --version (the first line)
 
-**Limit.** This depends on proper tail calls, which JavaScriptCore has
-and V8 (node) does not. Under node nothing changes, better or worse. An
-explicit loop in `term_compare` would not depend on the engine, at the
-cost of restructuring the function.
+Apple clang version 17.0.0 (clang-1700.0.13.5)
 
-**Not in this PR.** Checking stays unary: `100000n + 100000n` takes
-100000 steps. A separate patch
-(`agent_notes/patches/checker_nat_native.diff`, 31 added lines) computes
-Base `Nat` operations on closed numbers natively and roughly halves proof
-time for bend_stdlib's software floats (1000 binary32 additions proven
-bit-equal to hardware: about 6 s to 3 s,
-<https://github.com/nbardy/bend_stdlib/tree/stdlib-rewrite>). It is
-offered only if the speed is wanted.
+### Cause
+
+The addition is fine. `term_compare`'s `Ctr` case compares fields inside
+`a.x.every(...)`, so comparing the result with `200000n` recurses once
+per `Succ`.
+
+### A fix, if useful
+
+Walking the last field (`Succ`'s predecessor, a list's tail, a word's
+bits) in a loop inside the `Ctr` case removes the depth; the other fields
+recurse as now. Showing a false law about a huge term can overflow too,
+so `book_err` also catches an overflow raised while showing an error.
+About 25 lines in `bend2/bend.ts` (2 removed), 5 in `bend2/main.ts`, and a test
+(`tests/check/nat_long_chain.bend`); the diff is at
+<https://github.com/nbardy/bend_stdlib/blob/stdlib-rewrite/agent_notes/patches/checker_compare_overflow.diff>.
+With it: this law checks in 0.3 s and the same law at `1000000n` in
+0.7 s; false laws are rejected with the same messages as today; every
+file in `tests/*/*.bend` gives identical `--check-only` output. The
+sketch was written by an AI agent, so it is here for you to take or
+rewrite rather than as a PR.

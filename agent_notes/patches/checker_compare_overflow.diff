@@ -1,26 +1,52 @@
 diff --git a/bend2/bend.ts b/bend2/bend.ts
-index e3201d4..ab71110 100644
+index e3201d4..02932c2 100644
 --- a/bend2/bend.ts
 +++ b/bend2/bend.ts
-@@ -3276,7 +3276,8 @@ export function term_compare(mode: "EQ" | "LE", book: Book, lhs: HTerm, rhs: HTe
+@@ -3275,8 +3275,32 @@ export function term_compare(mode: "EQ" | "LE", book: Book, lhs: HTerm, rhs: HTe
+           && a.x.every((x, j) => term_compare("EQ", book, x, b.x[j], dep));
      }
      case "Ctr": {
-       return b.$ === "Ctr" && a.k === b.k && a.x.length === b.x.length
+-      return b.$ === "Ctr" && a.k === b.k && a.x.length === b.x.length
 -          && a.x.every((x, j) => term_compare("EQ", book, x, b.x[j], dep));
-+          && a.x.every((x, j) => j === a.x.length - 1 || term_compare("EQ", book, x, b.x[j], dep))
-+          && (a.x.length === 0 || term_compare("EQ", book, a.x[a.x.length - 1], b.x[b.x.length - 1], dep));
++      // a chain through last fields (Succ, a list's tail, a word's bits) is
++      // walked in this loop, so its length costs no stack
++      if (b.$ !== "Ctr") {
++        return false;
++      }
++      let x: HTerm = a;
++      let y: HTerm = b;
++      while (x.$ === "Ctr" && y.$ === "Ctr") {
++        const p = x.x;
++        const q = y.x;
++        if (x.k !== y.k || p.length !== q.length
++            || !p.every((u, j) => j === p.length - 1 || term_compare("EQ", book, u, q[j], dep))) {
++          return false;
++        }
++        if (p.length === 0) {
++          return true;
++        }
++        x = term_wnf(book, p[p.length - 1]);
++        y = term_wnf(book, q[q.length - 1]);
++        if (x === y) {
++          return true;
++        }
++        x = x.$ === "Lit" && y.$ === "Ctr" ? term_higher(lit_step(x)) : x;
++        y = y.$ === "Lit" && x.$ === "Ctr" ? term_higher(lit_step(y)) : y;
++      }
++      return term_compare("EQ", book, x, y, dep);
      }
      case "Lit": {
        return b.$ === "Lit" && a.v === b.v;
 diff --git a/bend2/main.ts b/bend2/main.ts
-index bfd3fa8..6c47590 100755
+index bfd3fa8..b3bbb29 100755
 --- a/bend2/main.ts
 +++ b/bend2/main.ts
-@@ -636,7 +636,11 @@ function book_err(e: unknown): string {
+@@ -636,7 +636,12 @@ function book_err(e: unknown): string {
      return "Error: the machine stack overflowed (a deep recursion, or a"
        + " literal too large to expand)";
    }
 -  return err?.$ === "Err" ? Bend.err_show(err) : String(e);
++  // showing a false law about a huge term can overflow too
 +  try {
 +    return err?.$ === "Err" ? Bend.err_show(err) : String(e);
 +  } catch (x) {
@@ -29,7 +55,7 @@ index bfd3fa8..6c47590 100755
  }
  
  // Load
-diff --git a/bendc/tests/check/nat_long_chain.bend b/tests/check/nat_long_chain.bend
+diff --git a/tests/check/nat_long_chain.bend b/tests/check/nat_long_chain.bend
 new file mode 100644
 index 0000000..f83f701
 --- /dev/null
