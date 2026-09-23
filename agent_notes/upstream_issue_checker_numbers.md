@@ -1,16 +1,15 @@
-# Draft PR: the checker computes Base Nat operations on closed numbers natively
+# Draft PR: comparing a long constructor chain no longer overflows the checker
 
 For HigherOrderCO/Bend. Not opened. The change is
-`agent_notes/patches/checker_native_numbers.diff`: 31 added lines in
-`bend2/bend.ts`, no existing line changed, against `main` at `ff7a40c`.
+`agent_notes/patches/checker_compare_overflow.diff` against `main` at
+`ff7a40c`: `bend2/bend.ts` +2 -1, `bend2/main.ts` +4 -1.
 
 ---
 
-**Title:** Base Nat operations on closed numbers are computed natively in the checker
+**Title:** A constructor's last field is compared by a tail call, so long chains check
 
-**The bug.** The checker evaluates `Nat.add` and its siblings by
-unfolding `Succ` once per unit, so arithmetic the runtime does instantly
-overflows the checker's stack:
+**The bug.** `term_compare` compares a constructor's fields inside
+`a.x.every(...)`, so comparing two `Succ` chains recurses once per unit:
 
 ```python
 import Base
@@ -21,37 +20,42 @@ def big():
 ```
 
 On 2.0.25 this fails with "the machine stack overflowed" (it checks at
-`1000n`); so do `Nat.mul(2n, 100000n)` and `Nat.max(70000n, 90000n)`.
+`1000n`). The arithmetic is fine; the comparison of the 200000-deep result
+with `200000n` is what recurses. Long lists, strings and words compare
+the same way.
 
-**The change.** When `Nat.add`, `sub`, `mul`, `min`, `max` or `cmp` (and
-so the `is_*` tests) from Base has both arguments, and both are closed
-(no free variable), the checker evaluates them; if both are numbers, it
-computes the result with machine integers, as the compiler already does
-for the same definitions, and returns a literal or `LT`/`EQ`/`GT`.
-Otherwise it unfolds as before; results past 2^53 unfold as before.
-Two added lines hook this into `term_wnf` where a definition unfolds;
-the rest is the table and two small helpers.
+**The change.**
 
-The closedness test is the one subtle part. A version without it hung on
-`tests/proof/shift_left_mask.bend`: evaluating a symbolic argument early
-cached its stuck, expanded form, and later comparisons of symbolic
-terms blew up. A symbolic argument is now never evaluated by this path.
+1. `term_compare`'s `Ctr` case compares every field but the last inside
+   `every`, and returns the comparison of the last field directly. In
+   strict code JavaScriptCore (bun) makes that a proper tail call, so a
+   chain through last fields (`Succ`, `Con`'s tail, `WCon`'s tail)
+   compares in constant stack.
+2. `book_err` catches an overflow raised while an error is being shown
+   (a false law about a huge term) and reports it as the overflow it
+   already reports, instead of crashing.
 
 **Evidence** (Apple M-series, `bun bend2/main.ts`):
 
 | | 2.0.25 | patched |
 |---|---|---|
-| `Nat.add(100000n, 100000n) == 200000n`, `Nat.mul(2n, 100000n) == ...`, nested sums | stack overflow | check |
-| false laws for each operation (`Nat.add(100000n, 1n) == 100000n`, `Nat.sub(5n, 9n) == 1n`, `Nat.max(70000n, 90000n) == 70000n`, ...) | overflow or error | error, with expected and observed values |
-| all 1427 files in `tests/*/*.bend`, `--check-only` | baseline | identical output; total time within noise (897 s vs 914 s, 6 in parallel) |
-| 1000 binary32 additions done in software over `Word(32n)`, proven bit-equal to hardware | 6.5 s | 3.0 s |
+| `Nat.add(100000n, 100000n) == 200000n` | stack overflow | checks, 0.7 s |
+| `Nat.mul(2n, 100000n) == 200000n`, `Nat.add(Nat.add(100000n, 1n), 5n) == 100006n` | stack overflow | check |
+| `Nat.add(1000000n, 1000000n) == 2000000n` | stack overflow | checks, 1.1 s |
+| `Nat.add(100n, 1n) == 100n` | error, expected and observed shown | same |
+| `Nat.add(100000n, 1n) == 100000n` | "machine stack overflowed" | same (rejected) |
+| all 1427 files in `tests/*/*.bend`, `--check-only` | baseline | identical output; total time 656 s vs 641 s |
 
-A smaller variant that fires only when both arguments are already
-literals (13 lines) also fixes the overflow examples, but makes the last
-row 2.5x slower than unpatched, so it is not proposed.
+**Limit.** This depends on proper tail calls, which JavaScriptCore has
+and V8 (node) does not. Under node nothing changes, better or worse. An
+explicit loop in `term_compare` would not depend on the engine, at the
+cost of restructuring the function.
 
-**Use case.** bend_stdlib implements IEEE binary32 in software so the
-checker can compute float results, and proves them bit-exact against
-hardware (`src/float/`, `examples/sf32.bend`):
-<https://github.com/nbardy/bend_stdlib/tree/stdlib-rewrite>. Nothing is
-added to Base.
+**Not in this PR.** Checking stays unary: `100000n + 100000n` takes
+100000 steps. A separate patch
+(`agent_notes/patches/checker_nat_native.diff`, 31 added lines) computes
+Base `Nat` operations on closed numbers natively and roughly halves proof
+time for bend_stdlib's software floats (1000 binary32 additions proven
+bit-equal to hardware: about 6 s to 3 s,
+<https://github.com/nbardy/bend_stdlib/tree/stdlib-rewrite>). It is
+offered only if the speed is wanted.

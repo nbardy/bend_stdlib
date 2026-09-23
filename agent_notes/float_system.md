@@ -21,9 +21,10 @@ Measured: the checker proves 1000 software float additions in 12.9 s
 with the first SF32; reading bit fields off the word instead of using
 U32 shifts brings it to 5-6.5 s with no checker change. A 31-line checker
 patch that computes Base `Nat` operations on closed numbers natively
-brings it to about 3 s, fixes a stack overflow on large `Nat` literals,
-and leaves all 1427 upstream tests unchanged
-(`agent_notes/upstream_issue_checker_numbers.md`). Larger variants that
+brings it to about 3 s and leaves all 1427 upstream tests unchanged
+(`agent_notes/patches/checker_nat_native.diff`). The stack overflow on
+large `Nat` laws is a separate, smaller fix: comparing constructor chains
+by a tail call (`agent_notes/upstream_issue_checker_numbers.md`). Larger variants that
 also accelerated `U32` gained little on top and were dropped; one of them
 hung on a symbolic upstream proof.
 
