@@ -2,7 +2,8 @@
 
 For HigherOrderCO/Bend. Not opened. The change is
 `agent_notes/patches/checker_compare_overflow.diff` against `main` at
-`ff7a40c`: `bend2/bend.ts` +2 -1, `bend2/main.ts` +4 -1.
+`ff7a40c`: `bend2/bend.ts` +2 -1, `bend2/main.ts` +4 -1, and a regression test
+`tests/check/nat_long_chain.bend` (fails on 2.0.25, passes patched).
 
 ---
 

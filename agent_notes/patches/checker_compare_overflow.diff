@@ -29,3 +29,20 @@ index bfd3fa8..6c47590 100755
  }
  
  // Load
+diff --git a/bendc/tests/check/nat_long_chain.bend b/tests/check/nat_long_chain.bend
+new file mode 100644
+index 0000000..f83f701
+--- /dev/null
++++ b/tests/check/nat_long_chain.bend
+@@ -0,0 +1,11 @@
++# a 200000-deep Succ chain compares with its literal in constant stack:
++# a constructor's last field is compared by a tail call
++import Base
++
++law big:
++  {Nat.add(100000n, 100000n) == 200000n : Nat}
++
++def big():
++  {==}
++
++#|All terms check.
