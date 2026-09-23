@@ -1,10 +1,10 @@
-# Draft bug issue: comparing a long Succ chain overflows the checker
+# Filed: bendlang/bend#1016 (PR)
 
-For HigherOrderCO/Bend, as a Bug issue (not a PR: `AGENTS.md` says
-`bend2/bend.ts` is human-written and not to be edited, so the fix is offered
-as a sketch). Not filed yet. The full sketch is
-`agent_notes/patches/checker_compare_overflow.diff` against `main` at
-`ff7a40c`.
+Opened 2026-09-24 as <https://github.com/bendlang/bend/pull/1016>, after
+the user read and approved every line; the PR says it is AI-assisted.
+Rebased onto 2.0.26 (`6a77e124`): all 1427 files in `tests/*/*.bend` give
+identical `--check-only` output. Branch: `nbardy/bend:long-chain-compare`.
+The text below is the earlier bug-issue draft, kept for reference.
 
 ---
 

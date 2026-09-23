@@ -1,6 +1,6 @@
-# Draft feature issue: laws about float code
+# Filed: bendlang/bend#1017
 
-For HigherOrderCO/Bend, as a Feature issue. Not filed yet.
+Opened 2026-09-24 as <https://github.com/bendlang/bend/issues/1017>.
 
 ---
 
