@@ -1,0 +1,5 @@
+{
+  "name": "bend_stdlib",
+  "version": "0.1.0",
+  "description": "Data structures and laws for Bend. Import from node_modules/bend_stdlib/src/."
+}
