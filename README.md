@@ -20,8 +20,21 @@ def sort_ok(xs):
   Sorted.sort_sorted(~Nat, ~Nat.ord(), xs)
 ```
 
-Examples, each checked and run by `./gate.sh` on the interpreter and as
-a native binary:
+## Install
+
+With pnpm, straight from git (pin a tag or commit for reproducible builds):
+
+```sh
+pnpm add bend_stdlib@github:nbardy/bend_stdlib#stdlib-rewrite
+```
+
+then import by path: `import ./node_modules/bend_stdlib/src/nat.bend as Nat`.
+Copying `src/` into a project works too; Bend imports are plain paths.
+
+## Examples
+
+Each is checked and run by `./gate.sh` on the interpreter and as a
+native binary:
 
 - `examples/paddle.bend`: a game state machine; the paddle stays on the
   field after every input sequence.
