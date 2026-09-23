@@ -44,7 +44,7 @@ native binary:
 - `examples/tour.bend`: sort, queue, parallel sum, vectors.
 
 The gate also checks each module on its own and that no name shadows
-Base. It passes on Bend 2.0.20 and 2.0.25.
+Base. It passes on Bend 2.0.20, 2.0.25 and 2.0.26.
 
 ## Modules
 

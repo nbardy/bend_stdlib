@@ -1,7 +1,7 @@
 # Philosophy
 
 The rules this library follows, and the Bend facts they come from.
-Checked on Bend 2.0.20 and 2.0.25 (2026-09-23); `./gate.sh` re-runs the
+Checked on Bend 2.0.20, 2.0.25 and 2.0.26 (2026-09-24); `./gate.sh` re-runs the
 checks.
 
 ## Facts
