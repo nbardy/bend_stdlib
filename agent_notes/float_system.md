@@ -18,9 +18,11 @@ Built and gated, Base only, no language change:
   pairs on JS and C (and 100000 pairs on C, run once).
 
 Measured: the checker proves 100 software float additions in 0.8 s and
-1000 in 7-13 s. A prototype checker patch that computes Base `Nat` and
-`U32` operations natively cuts 1000 to 0.75 s
-(`agent_notes/upstream_issue_checker_numbers.md`).
+1000 in 7-13 s. A checker patch that computes Base `Nat` and `U32`
+operations natively on closed, known numbers cuts 1000 to 4.5 s (from
+12.9 s on the same run) and leaves all 1427 upstream tests unchanged
+(`agent_notes/upstream_issue_checker_numbers.md`). A faster first version
+(0.75 s) hung on a symbolic upstream proof and was dropped.
 
 Not yet: division, square root, the universal law that `soft()` is
 `Correct` (it holds at every tested point; the proof needs
