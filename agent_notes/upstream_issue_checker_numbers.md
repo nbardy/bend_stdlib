@@ -1,72 +1,57 @@
-# Draft PR: the checker computes Base numeric primitives natively
+# Draft PR: the checker computes Base Nat operations on closed numbers natively
 
 For HigherOrderCO/Bend. Not opened. The change is
-`agent_notes/patches/checker_native_numbers.diff` (about 140 lines, one
-file, `bend2/bend.ts`), against `main` at `ff7a40c`.
+`agent_notes/patches/checker_native_numbers.diff`: 31 added lines in
+`bend2/bend.ts`, no existing line changed, against `main` at `ff7a40c`.
 
 ---
 
-**Title:** A Base Nat or U32 operation on closed, known numbers is computed natively in the checker
+**Title:** Base Nat operations on closed numbers are computed natively in the checker
 
-**What breaks today.** The checker evaluates `Nat.add` and its siblings by
-unfolding `Succ` one step at a time, and `U32` operations bit by bit. The
-compiler already emits native code for the same Base definitions
-(`nat_add`, `u32_add`, ...). So arithmetic that runs instantly fails in a
-proof:
+**The bug.** The checker evaluates `Nat.add` and its siblings by
+unfolding `Succ` once per unit, so arithmetic the runtime does instantly
+overflows the checker's stack:
 
 ```python
 import Base
 law big:
-  {Nat.add(100000n, 100000n) == Nat.mul(2n, 100000n) : Nat}
+  {Nat.add(100000n, 100000n) == 200000n : Nat}
 def big():
   {==}
 ```
 
-On 2.0.25 this stops with "the machine stack overflowed". It checks at
-`1000n`.
+On 2.0.25 this fails with "the machine stack overflowed" (it checks at
+`1000n`); so do `Nat.mul(2n, 100000n)` and `Nat.max(70000n, 90000n)`.
 
-**The change.** In `term_wnf`, when a Base definition from a fixed table
-(`Nat.add sub mul double min max cmp is_*`; `U32.add sub mul and or xor
-div mod min max inc not shl shr shln shrn from_nat to_nat cmp is_*`) has
-all its arguments, and those arguments are known numbers, the checker
-computes the result with machine integers and returns a literal (or
-`True`/`False`/`LT`/`EQ`/`GT`). Otherwise it unfolds as before. Each entry
-follows its Base body: `Nat.sub` truncates at zero, `U32.div` by zero is
-0, `U32.mod` by zero is the dividend, shifts past 31 give 0, `from_nat`
-wraps. Results past 2^53 unfold as before.
+**The change.** When `Nat.add`, `sub`, `mul`, `min`, `max` or `cmp` (and
+so the `is_*` tests) from Base has both arguments, and both are closed
+(no free variable), the checker evaluates them; if both are numbers, it
+computes the result with machine integers, as the compiler already does
+for the same definitions, and returns a literal or `LT`/`EQ`/`GT`.
+Otherwise it unfolds as before; results past 2^53 unfold as before.
+Two added lines hook this into `term_wnf` where a definition unfolds;
+the rest is the table and two small helpers.
 
-Two rules keep behavior identical everywhere else:
-
-1. An argument is evaluated only if the Base body forces it anyway
-   (`Nat.add` forces its first argument, never its second; `U32.shln`
-   forces the word only for a count above zero). Other arguments count
-   only if they are already values.
-2. An argument is evaluated only if it is closed (no free variable,
-   checked once per term node). A first version without this rule hung
-   on `tests/proof/shift_left_mask.bend`: evaluating a symbolic
-   `U32.shln(a, 16n)` early cached its stuck, expanded form where the
-   compact call had been, and the later comparison of
-   `U32.shln(a, Nat.add(16n, 16n))` with `U32.shln(a, 32n)` blew up.
-   With the rule, symbolic terms are never touched.
-
-The trust is unchanged: the compiler already assumes the same native
-operations agree with the same Base bodies.
+The closedness test is the one subtle part. A version without it hung on
+`tests/proof/shift_left_mask.bend`: evaluating a symbolic argument early
+cached its stuck, expanded form, and later comparisons of symbolic
+terms blew up. A symbolic argument is now never evaluated by this path.
 
 **Evidence** (Apple M-series, `bun bend2/main.ts`):
 
-| check | 2.0.25 | patched |
+| | 2.0.25 | patched |
 |---|---|---|
-| `Nat.add(100000n, 100000n) == Nat.mul(2n, 100000n)` | stack overflow | checks, 0.13 s |
-| `Nat.add(4000000000n, 4000000000n) == ...` | stack overflow | checks |
-| false laws (`Nat.add(100000n, 1n) == 100000n`, `Nat.sub(5n, 9n) == 1n`) | overflow / rejected | rejected, with expected and observed values |
-| `tests/proof/shift_left_mask.bend` (symbolic shifts) | 0.13 s | 0.16 s |
-| all 1427 files in `tests/*/*.bend`, `--check-only` output | baseline | identical; total time 763 s vs 762 s |
-| 1000 IEEE binary32 additions done in software, proven bit-equal to hardware | 12.9 s | 4.5 s |
+| `Nat.add(100000n, 100000n) == 200000n`, `Nat.mul(2n, 100000n) == ...`, nested sums | stack overflow | check |
+| false laws for each operation (`Nat.add(100000n, 1n) == 100000n`, `Nat.sub(5n, 9n) == 1n`, `Nat.max(70000n, 90000n) == 70000n`, ...) | overflow or error | error, with expected and observed values |
+| all 1427 files in `tests/*/*.bend`, `--check-only` | baseline | identical output; total time within noise (897 s vs 914 s, 6 in parallel) |
+| 1000 binary32 additions done in software over `Word(32n)`, proven bit-equal to hardware | 6.5 s | 3.0 s |
 
-**Why it matters.** Proofs that compute with numbers hit the overflow or
-take seconds: bit decoding, fixed-point game state, replays of recorded
-runs. The last row is from bend_stdlib, where binary32 floats are
-implemented in software over `Word(32n)` so the checker can compute them
-(`src/float/`), and `examples/sf32.bend` proves float results bit-exact
-against hardware: <https://github.com/nbardy/bend_stdlib/tree/stdlib-rewrite>.
-Nothing is added to Base.
+A smaller variant that fires only when both arguments are already
+literals (13 lines) also fixes the overflow examples, but makes the last
+row 2.5x slower than unpatched, so it is not proposed.
+
+**Use case.** bend_stdlib implements IEEE binary32 in software so the
+checker can compute float results, and proves them bit-exact against
+hardware (`src/float/`, `examples/sf32.bend`):
+<https://github.com/nbardy/bend_stdlib/tree/stdlib-rewrite>. Nothing is
+added to Base.
