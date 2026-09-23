@@ -1,127 +1,126 @@
-# Philosophy: why this stdlib is its own
+# Philosophy
 
-Bend is not "Haskell with proofs" or "Clojure with types". Four
-facts combined force a different standard library, and every
-module here must be able to say which facts it exploits and
-which limits it respects. If it cannot say both, it does not
-belong here — it is a normal lib with Bend syntax.
+The rules this library follows, and the Bend facts they come from.
+Checked on Bend 2.0.20 and 2.0.25 (2026-09-23); `./gate.sh` re-runs the
+checks.
 
-## The four facts
+## Facts
 
-**F1 — Affine and total.** Every value is used at most once;
-every function terminates. Therefore: no lazy infinites
-(streams take `Nat` fuel); no aliasing bugs to defend against
-(laws need no "assuming no aliasing" preambles); every loop
-budgets in its signature; every potentially-unbounded API
-(channels, schedulers, marchers) is a fuel-bounded state
-machine. Servers recharge fuel per tick — frame budgets were
-already fuel-shaped.
+1. `{==}` closes a goal when both sides normalize to the same term.
+   There are no tactics, so how a definition unfolds decides how hard
+   its proofs are.
+2. Variables are used at most once. `+x` allows copies of a `Data`
+   value. A closure can be called once. A `~` template argument is
+   substituted at compile time and can be used any number of times.
+3. A law can take `~` parameters, including other laws, and is checked
+   once with them opaque. Breaking an arm of such a proof is rejected.
+4. `match` works on parameters and pattern variables, not computed
+   values. Scrutinees follow binder order, a `let` cannot come before a
+   match on a parameter, and a match does not refine hypotheses already
+   in scope.
+5. At runtime a `Nat` is a 48-bit machine value (upstream WONTFIX #779),
+   and in the checker a literal is one node (2.0.24).
+6. A module imported as `Nat` that defines `ge_refl` replaces Base's
+   `Nat.ge_refl` in the importing file, with no warning.
+7. Every `F32` operation in Base is an unproven law, so no float
+   arithmetic computes in the checker.
 
-**F2 — Proofs are build-gate terms, erased at runtime.**
-Therefore: laws ship *with* structures (a structure without
-its invariant laws is unfinished); each law must be consumed
-by a layer above, or it is tautology weight and gets cut;
-expensive runtime checks (bounds, capacities, sortedness) move
-to build time — the library gets *faster* the more it proves.
+## Do and don't
 
-**F3 — Match only on params; `Bool.pick` is opaque.** The
-single non-negotiable design rule: **recursion shape must
-equal proof case-split shape.** Computed-test definitions are
-banned from core. Inherited opaque definitions are repaired
-with structural twins + bridge lemmas, never by forking Base.
-`Cmp` (a sum type) owns order dispatch; the six `is_*` Bool
-predicates are derived views with correspondence bridges.
+### Types
 
-**F4 — One codebase, three backends; floats are axioms.**
-`Array` code is O(log n) native, O(n)-copy on JS — performance
-reasoning is per-backend and documented. GPU kernels are
-uniform-numeric SoA until ADT-on-GPU is verified by a native
-`--gpu` run. `F32` operators are uninterpreted host laws:
-provable geometry is integer/fixed-point, float flesh stays
-tested — every numeric module splits along this line
-explicitly. Script-path float output is symbolic; prototype
-vec math in `U32`/`Nat`.
+- Do state an invariant as a type computed from the data: `Nat.LE`,
+  `Sorted.from`, `Vec.Vec(A, n)`. Its proofs then recurse the same way
+  the data does.
+- Don't use `{Nat.is_le(a, b) == True{}}` as a premise in laws. It
+  needs a case split at every step. Convert it once with
+  `Nat.le_of_is_lt` or `Nat.ge_of_not_lt`.
+- Do make impossible cases impossible to write. `Vec.zip_with` takes
+  two `Vec(_, n)`, so it has no length-mismatch case; `Vec.get` at
+  `n = 0n` holds `Nat.LT(i, 0n)`, which is `Empty`.
+- Don't return a made-up value for a case that should not happen. Change
+  the type instead.
+- Do convert raw input once, at the boundary (`Vec.from_list`).
+- Do give each outcome its own constructor (`List.Step`: `Stop` or
+  `Next`). Don't use one constructor, such as `None`, for two different
+  outcomes.
 
-## Consequences (the house rules)
+### Branching
 
-1. One definition, dual use: it must reduce definitionally on
-   constructors (so `{==}` closes ground goals) AND recurse
-   structurally (so induction works). Otherwise rejected.
-2. Computed tests get pushed into matchable params via helpers
-   (`pick_succ(c, x, y)` takes `c` as a param; callers pass
-   `Nat.is_lt(ap, bp)`).
-3. Pure-`Data` crunchers take `+` args; linear `Type` things
-   stay affine. Two-variable induction lemmas use `for +a`
-   law binders (proof `def`s keep bare binders — `+` there is
-   a syntax error — but inherit reusability from the law).
-4. Loops take fuel in the API from day one. Nothing infinite.
-5. No tautology laws: each law earns its place by being used
-   in the next layer up.
-6. Never fork Base. Upstream proposals are additive by
-   default; where a replacement is genuinely better
-   (structural `Nat.max`: same values, provable, at stated
-   O(min)-allocation cost), propose the replacement HONESTLY
-   — same-values-plus-cost-note, differential test, and the
-   downstream proof-migration path documented — never smuggled
-   inside "behavior-identical".
-7. Backend honesty: CPU claims from runs, GPU claims only from
-   native `--gpu` runs, never from the script path.
+- Do branch on a comparison that returns a proof, such as
+  `Nat.le_case(a, b) : Or(LE(a, b), LE(b, a))`. The proof then has the
+  fact each branch was taken on.
+- Don't branch on a `Bool` and re-prove the fact afterwards.
+- Do handle Base's branches on computed tests (`U32.min` is
+  `Bool.pick(U32.is_lt(a, b), a, b)`) by taking the test's result `c` and
+  `{U32.is_lt(a, b) == c}` as parameters (`U32.min_le_r.go`).
+- Do use Base's `Or(A, B)` for a two-way result.
 
-## Relation to Rust and Clojure
+### Recursion
 
-Rust's `core`/`alloc`/`std` split is worth stealing (a core
-that needs no IO and checks anywhere); its borrow checker,
-`unsafe`, and trait coherence are not (affinity is simpler and
-total; `@unsafe` exits proofs rather than suspending safety;
-dispatch is type-directed). Clojure's transducers fit Bend
-*better* than Clojure (single-use composition is native);
-its laziness, atoms, and multimethods do not port (fuel
-colists; linear `Array` + `Chan`; type-directed dispatch).
-`core.async` ports except `alt!`, which needs a runtime
-primitive — our one filed upstream runtime ask.
+- Do pass a computed value to a helper that matches on its parameter
+  (`Q.pop` passes `List.reverse(rear)` to `pop.rot`).
+- Don't add fuel to a function whose recursion is bounded by its input.
+  Fuel is for loops bounded by the outside world.
+- Do pass a recursive call as a thunk (`u => insert(x, t)`) when only
+  one branch uses it. Arguments are evaluated before the call.
+- Do take hypotheses after a match, as a function each branch returns.
+  If a hypothesis is needed both for the current step and for the
+  induction, pass the induction step in as a function too
+  (`Sorted.insert_from.go`).
 
-## F5 — expressiveness limits (verified by probe, 2026-09-19)
+### Composition
 
-These are not style choices; they are checker facts that change
-signatures. Every one was confirmed by running, not by reading.
+- Do write functions and laws over `~` operations and `~` laws, as in
+  `Sorted.sort_sorted` and `Tree.reduce_foldr`.
+- Do pass an operation and its laws as one dictionary (`C.Ord`,
+  `C.Semigroup`, `C.Group`) and read it through accessors such as
+  `C.Ord.dec`; a match on a `~` dictionary inside generic code cannot be
+  typed. Put instances with their types (`Nat.ord()`, `U32.group()`).
+- Do state a caller's law through the same dictionary the library law
+  uses. Template instances are equal only when their `~` arguments are
+  the same terms: `List.foldr` over `~Nat.add` and over
+  `~C.Semigroup.fn(~Nat, ~Nat.add_sg())` compute the same values but the
+  checker does not equate them.
+- Do prove a state machine's invariant for one step and get it for every
+  input sequence from `M.run_inv`.
+- Do give laws that are passed as `~` arguments plain binders. `+` and
+  `-` are part of a law's type, so `@a -> @-b -> @-c -> ...` does not
+  fit `~assoc: @x -> @y -> @z -> ...`. Copy inside a branch with
+  `+x = x`.
+- Do prove laws about Base's functions (`List.append`, `List.reverse`,
+  `List.foldr`, `U32.clamp`). Don't copy a Base function and prove laws
+  about the copy.
+- Do write each equation with the side a caller will rewrite away on the
+  right, since `%e : P` replaces `e`'s right side with its left side.
+- Do specify a data structure by a function to a simpler type and laws
+  about it: `Q.model(q)` is the list a queue holds, `push_model` and
+  `pop_model` state push and pop on that list.
 
-- **No runtime closures.** `~` binders are compile-time
-  templates over closed top-level names: a law mentioning
-  `List.map`/`filter`/`sort` with a *quantified* function
-  fails at parse ("expected: a defined name"), even reflexively.
-  Consequence: sort/fusion/reduce laws are stated PER concrete
-  comparator/kernel in the instantiating book, or over a
-  defunctionalized `Data` function-code. "Transducers compose"
-  does not port; a fixed menu of monomorphic kernels does.
-- **Functions are never `Data`.** `+f` is rejected, so no
-  user-written higher-order recursion and no reusable
-  callbacks. Type-level predicates may use function binders
-  freely (types check dead) — specs can be higher-order even
-  when programs cannot.
-- **No GADTs, no funext.** Native datatypes are parametric, not
-  constructor-indexed (negative tests in-repo); equations
-  between functions are dead on arrival. Index-flavored designs
-  (`Vec(n)`, `Mat` with structural shape rejection) must be
-  re-expressed as `Data` container + computed relation
-  (the `LE`/`SameLen` pattern in `src/kernel.bend`).
-- **F32 is opaque on literals.** `F32.add(1.0,1.0) == 2.0`
-  does not reduce; U32 ground goals DO (bit-wise `Word.adc`).
-  The float boundary is total, not gradual.
-- **`Array` needs `Perfect`.** Indices wrap silently
-  (`U32.and(i, n-1)`), and ragged trees typecheck while
-  `size`/`get` lie about them. Every `Array` law takes a
-  `Perfect(d, a)` premise first; sizes are 2^d only.
-- **Unary `Nat` overflows the checker** (~4000–6000 in ground
-  goals). Coordinates fine; pixel counts are not Nat-carried.
-- **The missing decision lemmas** (`Bool.split`, `Cmp.split`)
-  now live on the upstream branch — 46 staging helpers, one
-  root cause.
+### Modules
 
-## Layout
+- Do keep one topic per file, with each law next to the definitions it
+  is about.
+- Do import a module that extends a Base type under that type's name
+  (`nat.bend as Nat`), and don't define a name Base already defines
+  (fact 6). `gate.sh` checks every name against `bend base`.
+- Don't add a law that nothing in this repository uses. When a law's
+  last user goes, delete the law.
 
-- `src/` — library modules (`order.bend` seeds L1–L3).
-- `proofs/` — per-module proof files where a module's laws
-  outgrow living next to their defs (Base precedent keeps
-  small laws adjacent; large developments split).
-- Gate: every module checks standalone AND the whole tree
-  checks together. No new axioms beyond Base's host laws.
+### Numbers
+
+- Do use `Nat` for counts, indices and anything a proof inducts on.
+- Do keep game state in `U32` and prove order facts through
+  `U32.cmp_nat`.
+- Don't state laws about `F32` arithmetic (fact 7). Test float code.
+
+### Tests
+
+- The laws are the tests. `gate.sh` adds what the checker does not
+  cover: each module checks on its own, each example prints its
+  expected output on the interpreter and as a native binary, and no
+  name shadows Base.
+- Do break a new generic proof once and confirm it is rejected. Do
+  make every gate check able to fail.
+- Don't write tests that restate a value `{==}` would prove.
+- Don't claim a speedup or GPU behavior without a measured run.

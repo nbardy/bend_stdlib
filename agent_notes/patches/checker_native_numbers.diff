@@ -1,0 +1,170 @@
+diff --git a/bend2/bend.ts b/bend2/bend.ts
+index e3201d4..318c7db 100644
+--- a/bend2/bend.ts
++++ b/bend2/bend.ts
+@@ -2902,6 +2902,142 @@ export function body_flatten(b: Body, vars: PVar[], fr: () => number): LTerm {
+ // a rewrite demands its evidence and steps to its body on {==}, else
+ // sticks as a value.
+ 
++// Nat literals, computed natively
++// -------------------------------
++// A Base Nat operation whose arguments reduce to literals is computed with
++// machine integers instead of unfolding Succ one at a time, as the runtime
++// already does for the same definitions. Each entry must agree with its
++// Base definition: sub truncates at zero, cmp and the is_ tests follow
++// Nat.cmp. Results past 2^53 fall back to unfolding.
++const NAT_FAST: Record<string, (x: number[]) => number | string> = {
++  "Nat.add": ([a, b]) => a + b,
++  "Nat.sub": ([a, b]) => Math.max(a - b, 0),
++  "Nat.mul": ([a, b]) => a * b,
++  "Nat.double": ([a]) => a * 2,
++  "Nat.min": ([a, b]) => Math.min(a, b),
++  "Nat.max": ([a, b]) => Math.max(a, b),
++  "Nat.cmp": ([a, b]) => a < b ? "LT" : a === b ? "EQ" : "GT",
++  "Nat.is_eq": ([a, b]) => a === b ? "True" : "False",
++  "Nat.is_ne": ([a, b]) => a !== b ? "True" : "False",
++  "Nat.is_lt": ([a, b]) => a < b ? "True" : "False",
++  "Nat.is_le": ([a, b]) => a <= b ? "True" : "False",
++  "Nat.is_gt": ([a, b]) => a > b ? "True" : "False",
++  "Nat.is_ge": ([a, b]) => a >= b ? "True" : "False",
++};
++
++function nat_lit(book: Book, t: HTerm): number | null {
++  let k = 0;
++  while (t.$ === "Ctr" && t.k === "Succ" && t.x.length === 1) {
++    k += 1;
++    t = term_wnf(book, t.x[0]);
++  }
++  if (t.$ === "Lit" && typeof t.v === "number") {
++    return t.v + k;
++  }
++  if (t.$ === "Ctr" && t.k === "Zero" && t.x.length === 0) {
++    return k;
++  }
++  return null;
++}
++
++function nat_fast(book: Book, k: Name, frs: Frame[], n: number, s?: Span): HTerm | null {
++  const xs: number[] = [];
++  for (let i = 0; i < n; i += 1) {
++    const fr = frs[frs.length - 1 - i] as Extract<Frame, { $: "APP" }>;
++    const v = nat_lit(book, term_wnf(book, fr.x));
++    if (v === null) {
++      return null;
++    }
++    xs.push(v);
++  }
++  const r = NAT_FAST[k](xs);
++  if (typeof r === "string") {
++    return Ctr(r, [], s);
++  }
++  return Number.isSafeInteger(r) ? Lit(r, s) as HTerm : null;
++}
++
++// U32 words, computed natively
++// ----------------------------
++// The same for Base U32 operations whose arguments reduce to fully known
++// words (32 bits, lowest first). Each entry must agree with its Base
++// definition: division by zero is 0, mod by zero is the dividend, shifts
++// past 31 give 0, from_nat wraps modulo 2^32, min and max pick by is_lt.
++type U32Arg = "u" | "n";
++const U32_FAST: Record<string, [U32Arg[], (x: number[]) => number | string, "u" | "n" | "c"]> = {
++  "U32.add": [["u", "u"], ([a, b]) => (a + b) >>> 0, "u"],
++  "U32.sub": [["u", "u"], ([a, b]) => (a - b) >>> 0, "u"],
++  "U32.mul": [["u", "u"], ([a, b]) => Math.imul(a, b) >>> 0, "u"],
++  "U32.inc": [["u"], ([a]) => (a + 1) >>> 0, "u"],
++  "U32.and": [["u", "u"], ([a, b]) => (a & b) >>> 0, "u"],
++  "U32.or": [["u", "u"], ([a, b]) => (a | b) >>> 0, "u"],
++  "U32.xor": [["u", "u"], ([a, b]) => (a ^ b) >>> 0, "u"],
++  "U32.not": [["u"], ([a]) => (~a) >>> 0, "u"],
++  "U32.shl": [["u"], ([a]) => (a << 1) >>> 0, "u"],
++  "U32.shr": [["u"], ([a]) => a >>> 1, "u"],
++  "U32.shln": [["u", "n"], ([a, n]) => n >= 32 ? 0 : (a << n) >>> 0, "u"],
++  "U32.shrn": [["u", "n"], ([a, n]) => n >= 32 ? 0 : a >>> n, "u"],
++  "U32.div": [["u", "u"], ([a, b]) => b === 0 ? 0 : Math.floor(a / b), "u"],
++  "U32.mod": [["u", "u"], ([a, b]) => b === 0 ? a : a % b, "u"],
++  "U32.min": [["u", "u"], ([a, b]) => a < b ? a : b, "u"],
++  "U32.max": [["u", "u"], ([a, b]) => a < b ? b : a, "u"],
++  "U32.from_nat": [["n"], ([n]) => n % 4294967296, "u"],
++  "U32.to_nat": [["u"], ([a]) => a, "n"],
++  "U32.cmp": [["u", "u"], ([a, b]) => a < b ? "LT" : a === b ? "EQ" : "GT", "c"],
++  "U32.is_eq": [["u", "u"], ([a, b]) => a === b ? "True" : "False", "c"],
++  "U32.is_ne": [["u", "u"], ([a, b]) => a !== b ? "True" : "False", "c"],
++  "U32.is_lt": [["u", "u"], ([a, b]) => a < b ? "True" : "False", "c"],
++  "U32.is_le": [["u", "u"], ([a, b]) => a <= b ? "True" : "False", "c"],
++  "U32.is_gt": [["u", "u"], ([a, b]) => a > b ? "True" : "False", "c"],
++  "U32.is_ge": [["u", "u"], ([a, b]) => a >= b ? "True" : "False", "c"],
++  "U32.is_zero": [["u"], ([a]) => a === 0 ? "True" : "False", "c"],
++};
++
++function u32_val(book: Book, t: HTerm): number | null {
++  t = term_wnf(book, t);
++  if (t.$ !== "Ctr" || t.k !== "U32" || t.x.length !== 1) {
++    return null;
++  }
++  let w = t.x[0];
++  let v = 0;
++  for (let i = 0; i < 32; i += 1) {
++    w = term_wnf(book, w);
++    if (w.$ !== "Ctr" || w.k !== "WCon" || w.x.length !== 2) {
++      return null;
++    }
++    const b = term_wnf(book, w.x[0]);
++    if (b.$ !== "Ctr" || (b.k !== "True" && b.k !== "False")) {
++      return null;
++    }
++    if (b.k === "True") {
++      v += 2 ** i;
++    }
++    w = w.x[1];
++  }
++  return v;
++}
++
++function u32_fast(book: Book, k: Name, frs: Frame[], n: number, s?: Span): HTerm | null {
++  const [kinds, f, out] = U32_FAST[k];
++  if (kinds.length !== n) {
++    return null;
++  }
++  const xs: number[] = [];
++  for (let i = 0; i < n; i += 1) {
++    const fr = frs[frs.length - 1 - i] as Extract<Frame, { $: "APP" }>;
++    const v = kinds[i] === "u" ? u32_val(book, fr.x) : nat_lit(book, term_wnf(book, fr.x));
++    if (v === null || !Number.isSafeInteger(v)) {
++      return null;
++    }
++    xs.push(v);
++  }
++  const r = f(xs);
++  if (typeof r === "string") {
++    return Ctr(r, [], s);
++  }
++  return out === "u" ? term_higher(u32_to_term(r, s)) : Lit(r, s) as HTerm;
++}
++
+ export function term_wnf(book: Book, term: HTerm): HTerm {
+   const frs: Frame[] = [];
+   let tm: HTerm = term;
+@@ -2999,6 +3135,22 @@ export function term_wnf(book: Book, term: HTerm): HTerm {
+         if (run < tld.n || tld.v === null) {
+           break focus;
+         }
++        if (tld.b && run === tld.n && U32_FAST[tm.k] !== undefined) {
++          const got = u32_fast(book, tm.k, frs, tld.n, tm.s);
++          if (got !== null) {
++            frs.length -= tld.n;
++            tm = got;
++            continue main;
++          }
++        }
++        if (tld.b && run === tld.n && NAT_FAST[tm.k] !== undefined) {
++          const got = nat_fast(book, tm.k, frs, tld.n, tm.s);
++          if (got !== null) {
++            frs.length -= tld.n;
++            tm = got;
++            continue main;
++          }
++        }
+         const rf: HTerm = tm;
+         lhs = { t: () => rf, n: tld.n };
+         tm = tld.v;

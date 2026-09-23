@@ -1,151 +1,129 @@
-# bend-stdlib cheatsheet
+# bend_stdlib
 
-**Hosted cheatsheet: [nbardy.github.io/bend_stdlib](https://nbardy.github.io/bend_stdlib/)** (pretty, filterable — same content as below).
+Data structures and laws for [Bend](https://github.com/HigherOrderCO/Bend).
+Laws are checked at build time and erased at run time. Design rules are
+in [PHILOSOPHY.md](PHILOSOPHY.md).
 
-Proof-carrying standard library for Bend: 59 checked laws across
-6 modules, zero runtime cost (proofs erase). Every entry below
-is implemented and gated — `bend src/<mod>.bend` checks it,
-`bend tests/test_<mod>.bend` runs its oracles (31 checks).
+```python
+import Base
+import ./src/nat.bend as Nat
+import ./src/sorted.bend as Sorted
 
-Modules: `order` (13, Bool/Cmp/Nat starter + twins) ·
-`kernel` (15, LE relations + goals A/B/C) · `absurd` (5) ·
-`perfect` (4, Array invariant) · `sorted` (16, flagship port) ·
-`queue` (7, banker's queue).
+def sort(xs: List<&2, Nat>) -> List<&2, Nat>:
+  Sorted.sort(~Nat, ~Nat.ord(), xs)
 
-Tags: **[def]** runs · **[law]** proves (checked at build, erased
-at run) · **[type]** classifies. Import once per file:
-`import ../src/order.bend as O` (or `kernel` / `absurd` /
-`perfect` / `sorted`). Philosophy: `PHILOSOPHY.md`. Roadmap:
-`docs/stdlibs.md`. Validation log: `docs/validation.md`.
-Pretty HTML version of this page: `docs/cheatsheet.html`.
+law sort_ok:
+  for xs: List<&2, Nat>
+  Sorted.Sorted(~Nat, ~Nat.ord(), sort(xs))
 
-## Order & comparison
+def sort_ok(xs):
+  Sorted.sort_sorted(~Nat, ~Nat.ord(), xs)
+```
 
-| | signature | what |
+Examples, each checked and run by `./gate.sh` on the interpreter and as
+a native binary:
+
+- `examples/paddle.bend`: a game state machine; the paddle stays on the
+  field after every input sequence.
+- `examples/rewind.bend`: 2D integer physics run 100000 steps and
+  rewound to the exact start state, with a law that this holds for every
+  state and step count.
+- `examples/tour.bend`: sort, queue, parallel sum, vectors.
+
+The gate also checks each module on its own and that no name shadows
+Base. It passes on Bend 2.0.20 and 2.0.25.
+
+## Modules
+
+### `class.bend` as `C`: operations with their laws
+
+Generic code takes one of these as a `~` argument and reads it through
+the accessors (`C.Ord.R`, `C.Ord.dec`, `C.Semigroup.op`, ...).
+
+| type | fields | instances |
 |---|---|---|
-| [def] `SMax(a,b)` | `Nat, Nat -> Nat` | structural max, unfolds with `Nat.cmp` (`order`) |
-| [def] `SMin(a,b)` | `Nat, Nat -> Nat` | structural min (`order`, `kernel`) |
-| [law] `cmp_refl(a)` | `{Nat.cmp(a,a) == EQ}` | order reflexivity |
-| [law] `ge_refl(a)` | `{Nat.is_ge(a,a) == True}` | via `cong` over `cmp_refl` |
-| [law] `smax_ge_l/r` | `{is_ge(SMax(a,b),a/b) == True}` | twin max dominates both args |
-| [law] `smin_le_l/r` | `{is_le(SMin(a,b),a/b) == True}` | twin min duals |
-| [law] `max_bridge` | `{SMax(a,b) == Nat.max(a,b)}` | transport twin→Base; consumed by `nat_max_ge_*` |
-| [law] `nat_max_ge_l/r` | `{is_ge(Nat.max(a,b),a/b) == True}` | Base-max facts via the bridge |
-| [law] `pick_succ` | `pick(c,1+y,1+x) == 1+pick(c,y,x)` | branch commutes with `Succ` |
-| [type] `LE(a,b)` | `Nat, Nat -> Data` | computed order: `Unit`/`Empty`, the evidence you pass as premise (`kernel`) |
-| [law] `le_trans` | `LE(a,b) → LE(b,c) → LE(a,c)` | 3-way induction; everything ordering composes through this |
-| [law] `le_add_r` | `LE(a,b) → LE(c+a,c+b)` | monotonicity, 5 lines |
-| [law] `le_eq_r` | `{a==b} → LE(c,a) → LE(c,b)` | transport along equality |
+| `Ord<A>` | `R`, `dec : Or(R(x,y), R(y,x))` | `Nat.ord()` |
+| `Semigroup<A>` | `op`, `assoc` | `Nat.add_sg()` |
+| `Group<A>` | `add`, `sub`, `sub_add`, `add_sub` | `U32.group()`, `V2.group()` |
 
-## Bool & branching
+### `machine.bend` as `M`: invariants over every input sequence
 
-| | signature | what |
+| | name | |
 |---|---|---|
-| [law] `and_false` | `{Bool.and(a,False) == False}` | annihilation |
-| [law] `and_comm` | `{and(a,b) == and(b,a)}` | four-case split |
+| def | `run(~S, ~I, ~step, s, inputs)` | `List.foldl` of `step` |
+| law | `run_inv(~S, ~I, ~step, ~Inv, ~keep, inputs, s)` | if one step keeps `Inv`, every run does |
 
-`Bool.pick` is Bend's `if`; `pick_merge` (commute any `f`
-through a branch) is next up, subsuming `pick_succ`.
+### `sim.bend` as `Sim`: reversible integer physics
 
-## Nat arithmetic
-
-| | signature | what |
+| | name | |
 |---|---|---|
-| [law] `add_succ` | `{add(a,1+b) == 1+add(a,b)}` | induction on `a` |
-| [def] `dbl(d)` | `Nat -> U32` | doubling spec of `Array.size` (`perfect`) |
-| [law] `min_le_r` | `SMin`-driven min bound (`kernel`) | feeds `blit_bounds` |
-| [law] `add_sub_cancel` | cancellation shape (`kernel`) | feeds `blit_bounds` |
+| type | `State<P>` | position `x`, velocity `v` |
+| def | `step`, `back`, `run`, `rewind` | take `~g: C.Group<P>` and a force `~F: P -> P` |
+| law | `back_step`, `step_back` | `back` and `step` undo each other |
+| law | `rewind_run` | `rewind(n, run(n, s)) == s` |
 
-## Impossible (absurdity)
+### `sorted.bend` as `Sorted`
 
-| | signature | what |
+| | name | |
 |---|---|---|
-| [law] `bool_absurd` | `{False == True} -> A` | ex falso via the `IsFalse` motive |
-| [law] `cmp_absurd_lt_eq/lt_gt/eq_gt` | two positive `Cmp` views `-> A` | one arm each reduces to `False==True` |
-| [law] `nat_absurd_zero_succ` | `{0n == 1n+x} -> A` | zero/succ discriminate via `IsZero` |
+| def | `Sorted(~A, ~o, xs)`, `from(~A, ~o, lo, xs)` | |
+| def | `insert`, `sort` | over `~o: C.Ord<A>`; O(n²) |
+| def | `count(~A, ~eq, y, xs)` | |
+| law | `sort_sorted` | the output is `Sorted` |
+| law | `sort_count` | every element's count is unchanged |
 
-Premises are uninhabited by construction — these prove
-*by checking*. Needed in every impossible arm of order proofs.
+### `tree.bend` as `Tree`
 
-## Arrays & shape
-
-| | signature | what |
+| | name | |
 |---|---|---|
-| [type] `Perfect(T,d,a)` | `Type` | the missing invariant: depth-`d` perfect tree. Every Array law takes it first |
-| [def] `snd_size(p)` | `Array<T> & U32 -> U32` | pair projection (Base only destructures; this names it) |
-| [law] `size_node_snd` | `snd(size.node(ys,r)) == shl(snd(r))` | one-level size algebra |
-| [law] `size_node_shl` | `snd(size(ANode)) == shl(snd(size(xs)))` | composed one level — the most composition linear affinity permits |
-| [law] `perfect_new` | `Perfect(d, Array.new(d,v))` | constructors preserve it (Data-only, like `List.replicate`) |
+| type | `Tree<A>` | `Tip{x}` or `Fork{l, r}` |
+| def | `reduce(~A, ~m, t)` | reduces the two halves with a parallel call |
+| def | `build(~f, d, lo)`, `to_list` | |
+| law | `reduce_foldr` | for any `~m: C.Semigroup<A>`, `reduce` agrees with `List.foldr` |
 
-Known wall, documented in `perfect.bend`: full `size` induction
-needs the subtree twice — impossible on linear `Type`.
+### `queue.bend` as `Q`
 
-## Sorting
-
-| | signature | what |
+| | name | |
 |---|---|---|
-| [def] `LL.length(xs)` | `List -> Nat` | local length (concrete, no template trouble) |
-| [type] `LEOr<x,h>` | `Data` | evidence sum the comparator returns — proof matches what the program branched on |
-| [def] `le_case(x,h)` | `Nat, Nat -> LEOr` | total order decision |
-| [def] `dec/insert/isort` | insertion sort, concrete Nat comparator | sidesteps the generic-comparator template ban |
-| [type] `SortedB(xs,lo)` | `Type` | sortedness with lower-bound accumulator |
-| [law] `sorted_ins/sorted_isort` | insert/sort preserve `SortedB` | ported flagship, 221 lines |
-| [law] `len_ins/len_isort` | length preservation | no element lost |
+| type | `Queue<A>` | linear; front list and reversed rear list |
+| def | `empty`, `push`, `pop`, `model` | `pop` returns `List.Step<&1, A, Queue<A>>` |
+| law | `push_model` | `model(push(q, x)) == model(q) ++ [x]` |
+| law | `pop_model` | `pop` returns the head and tail of `model(q)` |
 
-## Containers (queue)
+### `vec.bend` as `Vec`
 
-| | signature | what |
+| | name | |
 |---|---|---|
-| [type] `Queue{f,r}` | `Data` | persistent banker's queue, Nat elements |
-| [def] `push(q,x)` | `Queue, Nat -> Queue` | cons onto rear |
-| [def] `pop(fuel,q)` | `Nat, Queue -> Queue & Maybe Nat` | fuel-bounded (classic pop isn't structural); `1+len` suffices, 0 answers `None` |
-| [def] `to_list(q)` | `Queue -> List Nat` | logical contents: front ++ reverse rear |
-| [law] `qapp_assoc` | append associativity | the composition everything stands on |
-| [law] `qrev_acc` | `rev(r,acc) == append(rev(r,[]),acc)` | triple-use `+` binders |
-| [law] `len_push` | `len(push) == 1+len` | via `order.add_succ` (cross-module reuse) |
-| [law] `to_list_push` | push snocs the logical list | composes assoc + rev_acc |
-| [law] `pop_cons/pop_rotate/pop_empty` | pop dispatch by equations | total spec, no cases missing |
+| def | `Vec(A, n)` | a list of length `n`, as a type |
+| def | `from_list(xs)` | `Vec(A, length xs)` |
+| def | `get(n, v, i, lt)` | `lt : Nat.LT(i, n)` |
+| def | `zip_with`, `foldr` | |
 
-## Intervals & matrices
+### `v2.bend` as `V2`
 
-| | signature | what |
+| | name | |
 |---|---|---|
-| [type] `Iv{s,e,wf}` | `Data` | interval carrying its own `LE(s,e)` well-formedness |
-| [type] `NoOv(xs,lo)` | `Type` | adjacency: next start bounded by previous end — the calendar premise |
-| [type] `AllGE(xs,lo)` | `Type` | every start globally bounded |
-| [law] `allge_weak` | push a bound down the list | `le_trans` consumer #1 |
-| [law] `noov_allge` | `NoOv → AllGE` | adjacency implies global bound — goal A |
-| [type] `SameLen(xs,ys)` | `Data` | computed length relation; mismatch arms are `Empty` |
-| [def] `dot(xs,ys,e)` | `Nat` | total dot product, no runtime length check, no fallback |
-| [type] `Conform(rows,v)` | `Type` | every row matches the vector — the matmul shape premise |
-| [def] `matvec(rows,v,e)` | `List Nat` | shape-safe matvec |
-| [law] `blit_bounds` | `LE(add(x,min(sw,sub(d,x))), d)` | writes stay on canvas — goal B |
+| type | `V2` | `V2{x: U32, y: U32}` |
+| def | `add`, `sub`, `group()` | |
+| law | `sub_add`, `add_sub` | lifted from U32 |
 
-## Against the Clojure cheatsheet
+### `u32.bend` as `U32`
 
-What maps, what deliberately doesn't (reasons: PHILOSOPHY F5):
+| | name | |
+|---|---|---|
+| law | `cmp_nat` | `Nat.cmp(to_nat a, to_nat b) == U32.cmp(a, b)` |
+| def | `LE(a, b)` | `Nat.LE` on the numbers |
+| law | `min_le_r`, `le_max_r` | about Base's `U32.min` and `U32.max` |
+| law | `clamp_le_hi` | `U32.clamp(x, lo, hi) <= hi` for every `x` |
+| law | `lo_le_clamp` | `lo <= U32.clamp(x, lo, hi)` for every `x`, given `lo <= hi` |
+| law | `sub_add`, `add_sub` | wrapping `+` and `-` undo each other |
+| def | `group()` | U32 as a `C.Group` |
 
-| Clojure section | Bend status |
-|---|---|
-| Special forms, macros | N/A by design — no macros (termination + checker simplicity) |
-| Lists, seqs (`map/filter/reduce`) | Present in Base; *laws* about them blocked by the template rule — per-comparator statements only |
-| Vectors | Linear `Array` exists; persistent vector proposed (L5) |
-| Maps, sets, sorted collections | String-only today; int/sorted maps proposed (L5) |
-| Transients | N/A — linear `Array` *is* the transient story, different cut |
-| Transducers, reducers, laziness | Blocked (no runtime closures, no infinites); fixed monomorphic kernels + fuel colists instead |
-| Atoms, refs, agents, STM | Rejected by design — linear state + `Chan` cover it |
-| Futures, promises, `core.async` | `fork`/`join` are futures; channels exist; `alt!` needs a runtime primitive (L9) |
-| Multimethods, hierarchies | Rejected by design — type-directed dispatch |
-| IO, files, network | Host ops exist; safe `Result` wrappers proposed |
-| Coercions (`show`/`read`) | Exist in Base; roundtrip laws missing |
-| Java interop | N/A — C/JS `effs` instead |
-| `blit_bounds`-class laws | No counterpart anywhere — build-time bounds proofs that erase are this library's alone |
+### `nat.bend` as `Nat`, `list.bend` as `List`
 
-## Gates & upkeep
-
-- `bend src/<mod>.bend` per module; `bend tests/test_<mod>.bend`
-  runs 31 oracles (all PASS required).
-- No new axioms beyond Base's host laws. Every new law names
-  the consumer above it or the bug it prevents, in a comment.
-- This page and `docs/cheatsheet.html` mirror each other —
-  update both when adding functions.
+| | name | |
+|---|---|---|
+| def | `Nat.LE`, `Nat.LT`, `Nat.le_case` | order as a type, and the decision |
+| law | `Nat.le_refl`, `Nat.le_of_is_lt`, `Nat.ge_of_not_lt`, `Nat.add_assoc` | |
+| type | `List.Step<a, A, S>` | `Stop` or `Next{x, rest}` |
+| law | `List.append_nil`, `List.append_assoc`, `List.reverse_go` | about Base's `List.append` and `List.reverse` |

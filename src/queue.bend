@@ -1,171 +1,95 @@
 import Base
-import ./order.bend as O
+import ./list.bend as List
 
-# Persistent banker's queue (two-list): push conses onto rear,
-# pop takes from front, rotating rear when front runs dry.
+# queue.bend: a FIFO queue as two lists, specified by the list it holds.
 #
-# FOUND CONSTRAINT (not a style choice): the classic pop is not
-# structurally recursive — the rotation target qrev(r) is a
-# computed value, and the three-way mutual recursion it implies
-# is banned. So pop takes Nat fuel (same shape as Base's
-# List.sort.go): fuel 0 answers None; 1+len(r) always suffices.
-# Laws below specify pop totally by equations instead.
+#   import ./queue.bend as Q
+#
+# push conses onto rear; pop takes from front, and when front is empty the
+# reversed rear becomes the new front. Queue is linear (Type), so each
+# queue value is used once; then each element is reversed at most once and
+# every operation costs O(1) on average.
+#
+# model(q) is the list q holds. push_model and pop_model state push and
+# pop in terms of it.
 
-type Queue is Data:
-  Q{front: List<&2, Nat>, rear: List<&2, Nat>}
+type Queue<-A: Data> is Type:
+  Queue{front: List<&2, A>, rear: List<&2, A>}
 
-def qrev(xs: List<&2, Nat>, acc: List<&2, Nat>) -> List<&2, Nat>:
-  match xs:
-    case Nil{}:
-      acc
-    case h <> t:
-      qrev(t, h <> acc)
+def empty(-A: Data) -> Queue<A>:
+  Queue{Nil{}, Nil{}}
 
-def qlen(xs: List<&2, Nat>) -> Nat:
-  match xs:
-    case Nil{}:
-      0n
-    case h <> t:
-      1n+qlen(t)
-
-def qapp(xs: List<&2, Nat>, ys: List<&2, Nat>) -> List<&2, Nat>:
-  match xs:
-    case Nil{}:
-      ys
-    case h <> t:
-      h <> qapp(t, ys)
-
-def qlen_total(q: Queue) -> Nat:
+def model(-A: Data, q: Queue<A>) -> List<&2, A>:
   match q:
-    case Q{front, rear}:
-      Nat.add(qlen(front), qlen(rear))
+    case Queue{f, r}:
+      List.append(&2, A, f, List.reverse(&2, A, r))
 
-def to_list(q: Queue) -> List<&2, Nat>:
+def push(-A: Data, q: Queue<A>, x: A) -> Queue<A>:
   match q:
-    case Q{front, rear}:
-      qapp(front, qrev(rear, Nil{}))
+    case Queue{f, r}:
+      Queue{f, x <> r}
 
-def empty() -> Queue:
-  Q{Nil{}, Nil{}}
+# front is empty; f is the reversed rear
+def pop.rot(-A: Data, f: List<&2, A>) -> List.Step<&1, A, Queue<A>>:
+  match f:
+    case Nil{}:
+      List.Stop{}
+    case h <> t:
+      List.Next{h, Queue{t, Nil{}}}
 
-def push(q: Queue, x: Nat) -> Queue:
+def pop(-A: Data, q: Queue<A>) -> List.Step<&1, A, Queue<A>>:
   match q:
-    case Q{front, rear}:
-      Q{front, x <> rear}
+    case Queue{Nil{}, r}:
+      pop.rot(A, List.reverse(&2, A, r))
+    case Queue{h <> t, r}:
+      List.Next{h, Queue{t, r}}
 
-def pop(fuel: Nat, q: Queue) -> Queue & Maybe<Nat>:
-  match fuel:
-    case 0n:
-      (q, None{})
-    case 1n+pfuel:
-      match q:
-        case Q{front, rear}:
-          match front:
-            case h <> t:
-              (Q{t, rear}, Some{h})
-            case Nil{}:
-              match rear:
-                case Nil{}:
-                  (Q{Nil{}, Nil{}}, None{})
-                case h2 <> t2:
-                  pop(pfuel, Q{qrev(h2 <> t2, Nil{}), Nil{}})
+# pop's result with the remaining queue replaced by its model
+def pop.model(-A: Data, s: List.Step<&1, A, Queue<A>>) -> List.Step<&2, A, List<&2, A>>:
+  match s:
+    case List.Stop{}:
+      List.Stop{}
+    case List.Next{x, q}:
+      List.Next{x, model(A, q)}
 
-# Append associativity: the composition everything else stands on.
-law qapp_assoc:
-  for a: List<&2, Nat>
-  for b: List<&2, Nat>
-  for c: List<&2, Nat>
-  {qapp(qapp(a, b), c) == qapp(a, qapp(b, c)) : List<&2, Nat>}
+# LAW: push appends x to the model.
+law push_model:
+  for -A: Data
+  for q: Queue<A>
+  for +x: A
+  {List.append(&2, A, model(A, q), [x]) == model(A, push(A, q, x)) : List<&2, A>}
 
-def qapp_assoc(a, b, c):
-  match a:
+def push_model(A, q, x):
+  match q:
+    case Queue{+f, +r}:
+      %List.reverse_go(A, r, [x]) : {List.append(&2, A, List.append(&2, A, f, List.reverse(&2, A, r)), [x]) == List.append(&2, A, f, _) : List<&2, A>}
+      Equal.sym(List<&2, A>,
+        List.append(&2, A, f, List.append(&2, A, List.reverse(&2, A, r), [x])),
+        List.append(&2, A, List.append(&2, A, f, List.reverse(&2, A, r)), [x]),
+        List.append_assoc(A, f, List.reverse(&2, A, r), [x]))
+
+law pop_model.rot:
+  for -A: Data
+  for f: List<&2, A>
+  {List.uncons(A, f) == pop.model(A, pop.rot(A, f)) : List.Step<&2, A, List<&2, A>>}
+
+def pop_model.rot(A, f):
+  match f:
     case Nil{}:
       {==}
     case h <> t:
-      Equal.cong(List<&2, Nat>, List<&2, Nat>, z => h <> z, qapp(qapp(t, b), c), qapp(t, qapp(b, c)), qapp_assoc(t, b, c))
-
-# Reverse-with-accumulator is append of reversed-then-accumulator.
-# Triple use (t, h, acc) forces + binders — same affine shape as
-# max_bridge, same Data justification.
-law qrev_acc:
-  for r: List<&2, Nat>
-  for +acc: List<&2, Nat>
-  {qrev(r, acc) == qapp(qrev(r, Nil{}), acc) : List<&2, Nat>}
-
-def qrev_acc(r, acc):
-  match r:
-    case Nil{}:
+      %List.append_nil(A, t) : {List.Next{h, t} == List.Next{h, _} : List.Step<&2, A, List<&2, A>>}
       {==}
-    case +h <> +t:
-      Equal.trans(List<&2, Nat>,
-        qrev(t, h <> acc),
-        qapp(qrev(t, Nil{}), h <> acc),
-        qapp(qrev(t, h <> Nil{}), acc),
-        qrev_acc(t, h <> acc),
-        Equal.trans(List<&2, Nat>,
-          qapp(qrev(t, Nil{}), h <> acc),
-          qapp(qapp(qrev(t, Nil{}), h <> Nil{}), acc),
-          qapp(qrev(t, h <> Nil{}), acc),
-          Equal.sym(List<&2, Nat>, qapp(qapp(qrev(t, Nil{}), h <> Nil{}), acc), qapp(qrev(t, Nil{}), h <> acc), qapp_assoc(qrev(t, Nil{}), h <> Nil{}, acc)),
-          Equal.sym(List<&2, Nat>, qapp(qrev(t, h <> Nil{}), acc), qapp(qapp(qrev(t, Nil{}), h <> Nil{}), acc), Equal.cong(List<&2, Nat>, List<&2, Nat>, z => qapp(z, acc), qrev(t, h <> Nil{}), qapp(qrev(t, Nil{}), h <> Nil{}), qrev_acc(t, h <> Nil{})))))
 
-# Length respects push (via order's add_succ — cross-module reuse).
-law len_push:
-  for q: Queue
-  for x: Nat
-  {qlen_total(push(q, x)) == 1n+qlen_total(q) : Nat}
+# LAW: pop returns the model's head and tail.
+law pop_model:
+  for -A: Data
+  for q: Queue<A>
+  {List.uncons(A, model(A, q)) == pop.model(A, pop(A, q)) : List.Step<&2, A, List<&2, A>>}
 
-def len_push(q, x):
+def pop_model(A, q):
   match q:
-    case Q{front, rear}:
-      O.add_succ(qlen(front), qlen(rear))
-
-# Model law: push snocs the logical list.
-law to_list_push:
-  for q: Queue
-  for +x: Nat
-  {to_list(push(q, x)) == qapp(to_list(q), x <> Nil{}) : List<&2, Nat>}
-
-def to_list_push(q, x):
-  match q:
-    case Q{+front, +rear}:
-      Equal.trans(List<&2, Nat>,
-        qapp(front, qrev(rear, x <> Nil{})),
-        qapp(front, qapp(qrev(rear, Nil{}), x <> Nil{})),
-        qapp(qapp(front, qrev(rear, Nil{})), x <> Nil{}),
-        Equal.cong(List<&2, Nat>, List<&2, Nat>, z => qapp(front, z), qrev(rear, x <> Nil{}), qapp(qrev(rear, Nil{}), x <> Nil{}), qrev_acc(rear, x <> Nil{})),
-        Equal.sym(List<&2, Nat>, qapp(qapp(front, qrev(rear, Nil{})), x <> Nil{}), qapp(front, qapp(qrev(rear, Nil{}), x <> Nil{})), qapp_assoc(front, qrev(rear, Nil{}), x <> Nil{})))
-
-# Pop dispatch, fully specified by equations.
-law pop_cons:
-  for fuel: Nat
-  for h: Nat
-  for t: List<&2, Nat>
-  for r: List<&2, Nat>
-  {pop(1n+fuel, Q{h <> t, r}) == (Q{t, r}, Some{h}) : Queue & Maybe<Nat>}
-
-def pop_cons(fuel, h, t, r):
-  {==}
-
-law pop_rotate:
-  for f: Nat
-  for h2: Nat
-  for t2: List<&2, Nat>
-  {pop(1n+f, Q{Nil{}, h2 <> t2}) == pop(f, Q{qrev(h2 <> t2, Nil{}), Nil{}}) : Queue & Maybe<Nat>}
-
-def pop_rotate(f, h2, t2):
-  {==}
-
-law pop_empty:
-  for fuel: Nat
-  {pop(fuel, empty()) == (empty(), None{}) : Queue & Maybe<Nat>}
-
-def pop_empty(fuel):
-  match fuel:
-    case 0n:
+    case Queue{Nil{}, r}:
+      pop_model.rot(A, List.reverse(&2, A, r))
+    case Queue{h <> t, r}:
       {==}
-    case 1n+f:
-      {==}
-
-def main() -> List<&2, Nat>:
-  to_list(push(push(empty(), 1n), 2n))

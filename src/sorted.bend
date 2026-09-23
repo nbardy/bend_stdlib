@@ -1,226 +1,231 @@
-# PORTED (2026-09-19) from vendor/bend/tests/proof/insertion_sort_sorted.bend,
-# verbatim except this header — port, don't re-derive. Verified green
-# standalone. KNOWN DUP: its LE/LEOr family overlaps kernel.bend's LE;
-# dedup means rebasing this file's proofs onto kernel LE (recorded,
-# not done — the 221 lines check as-is and surgery risks the proof).
-# FLAGSHIP: certified insertion sort, strict. The comparator returns an
-# evidence SUM (LEOr), so the proof matches the same ordering fact the
-# program branched on; SortedB carries the lower bound as an
-# accumulator, making the insert lemma's IH fit exactly. Proved:
-# sortedness + length preservation.
-# ported from bend3: bend3's elaborator specialized a computed-match
-# goal in place and its dec/insert pair was mutual; bend
-# passes the recursive result INTO dec, so the pair untangles, and each
-# proof replays insert's dispatch through a framed match whose motive
-# keeps dec folded over the cell -- the arms then specialize and the IH
-# sits in the OG arm, a direct structural self-call. The double spends
-# ride + binders over Nat and List<&2, Nat>, both Data
 import Base
+import ./class.bend as C
 
-law LL.length:
-  for -A : Data
-  for xs : List<&2, A>
-  Nat
+# sorted.bend: insertion sort over any C.Ord, with laws that its output is
+# sorted and keeps every element's count.
+#
+#   import ./sorted.bend as Sorted
+#   Sorted.sort(~Nat, ~Nat.ord(), xs)
+#
+# The order's decision returns a proof of the side that holds. insert
+# branches on that proof, and the sortedness proof receives the same
+# proof in each branch, so it needs no transitivity. The laws are proven
+# once, with the order opaque.
+#
+# Insertion sort is O(n^2). Base's List.sort is a merge sort with no laws.
 
-def LL.length(A, xs):
+# every element is at least lo, and the list ascends
+def from(~A: Data, ~o: C.Ord<A>, lo: A, xs: List<&2, A>) -> Type:
   match xs:
     case Nil{}:
-      0n
-    case h <> t:
-      1n+LL.length(A, t)
-
-law LE:
-  for a: Nat
-  for b: Nat
-  Data
-
-def LE(a, b):
-  match a:
-    case 0n:
       Unit
-    case 1n+a1:
-      match b:
-        case 0n:
-          Empty
-        case 1n+b1:
-          LE(a1, b1)
+    case h <> t:
+      (C.Ord.R(A, o, lo, h) & from(~A, ~o, h, t))
 
-type LEOr<-x: Nat, -h: Nat> is Data:
-  OL{e: LE(x, h)}
-  OG{e: LE(h, x)}
+# the list ascends
+def Sorted(~A: Data, ~o: C.Ord<A>, xs: List<&2, A>) -> Type:
+  match xs:
+    case Nil{}:
+      Unit
+    case h <> t:
+      from(~A, ~o, h, t)
 
-law le_case:
-  for x: Nat
-  for h: Nat
-  LEOr<x, h>
-
-law le_case.fin:
-  for -a: Nat
-  for -b: Nat
-  for  w: LEOr<a, b>
-  LEOr<1n+a, 1n+b>
-
-def le_case.fin(a, b, w):
-  match w:
-    case OL{e}:
-      OL{e}
-    case OG{e}:
-      OG{e}
-
-def le_case(x, h):
-  match x, h:
-    case 0n, 0n:
-      OL{Unit{}}
-    case 0n, 1n+b:
-      OL{Unit{}}
-    case 1n+a, 0n:
-      OG{Unit{}}
-    case 1n+a, 1n+b:
-      le_case.fin(a, b, le_case(a, b))
-
-law dec:
-  for x: Nat
-  for h: Nat
-  for t: List<&2, Nat>
-  for r: List<&2, Nat>
-  for c: LEOr<x, h>
-  List<&2, Nat>
-
-def dec(x, h, t, r, c):
+# insert's step after comparing x with h. The recursive insert is passed
+# as a thunk so that the x-first branch does not run it.
+def insert.go(-A: Data, -o: C.Ord<A>, x: A, h: A, t: List<&2, A>, rec: Unit -> List<&2, A>, c: Or(C.Ord.R(A, o, x, h), C.Ord.R(A, o, h, x))) -> List<&2, A>:
   match c:
-    case OL{e}:
+    case Inl{e}:
       x <> h <> t
-    case OG{e}:
-      h <> r
+    case Inr{e}:
+      h <> rec(Unit{})
 
-law insert:
-  for +x  : Nat
-  for +xs : List<&2, Nat>
-  List<&2, Nat>
-
-def insert(x, xs):
+def insert(~A: Data, ~o: C.Ord<A>, +x: A, xs: List<&2, A>) -> List<&2, A>:
   match xs:
     case Nil{}:
       [x]
-    case h <> t:
-      dec(x, h, t, insert(x, t), le_case(x, h))
+    case +h <> +t:
+      insert.go(A, o, x, h, t, u => insert(~A, ~o, x, t), C.Ord.dec(A, o, x, h))
 
-law isort:
-  for xs: List<&2, Nat>
-  List<&2, Nat>
-
-def isort(xs):
+def sort(~A: Data, ~o: C.Ord<A>, xs: List<&2, A>) -> List<&2, A>:
   match xs:
     case Nil{}:
       Nil{}
     case h <> t:
-      insert(h, isort(t))
+      insert(~A, ~o, h, sort(~A, ~o, t))
 
-law SortedB:
-  for xs: List<&2, Nat>
-  for lo: Nat
-  Type
+# A match does not refine hypotheses already in scope, so these laws take
+# their hypotheses after the match, as functions returned by each arm.
 
-def SortedB(xs, lo):
-  match xs:
-    case Nil{}:
-      Unit
-    case h <> t:
-      (LE(lo, h) & SortedB(t, h))
+law insert_from.go:
+  for -A: Data
+  for -o: C.Ord<A>
+  for -lo: A
+  for -x: A
+  for -h: A
+  for -t: List<&2, A>
+  for -rec: Unit -> List<&2, A>
+  for s: from(~A, ~o, lo, h <> t)
+  for lx: C.Ord.R(A, o, lo, x)
+  for ih: from(~A, ~o, h, t) -> C.Ord.R(A, o, h, x) -> from(~A, ~o, h, rec(Unit{}))
+  for c: Or(C.Ord.R(A, o, x, h), C.Ord.R(A, o, h, x))
+  from(~A, ~o, lo, insert.go(A, o, x, h, t, rec, c))
 
-law sorted_ins.fin:
-  for -lo : Nat
-  for -x  : Nat
-  for -h  : Nat
-  for -t  : List<&2, Nat>
-  for sx  : SortedB(h <> t, lo)
-  for lx  : LE(lo, x)
-  for rec : (SortedB(t, h) -> LE(h, x) -> SortedB(insert(x, t), h))
-  for c   : LEOr<x, h>
-  SortedB(dec(x, h, t, insert(x, t), c), lo)
-
-def sorted_ins.fin(lo, x, h, t, sx, lx, rec, c):
-  (lh, st) = sx
+def insert_from.go(A, o, lo, x, h, t, rec, s, lx, ih, c):
+  (lh, st) = s
   match c:
-    case OL{e}:
+    case Inl{e}:
       (lx, e, st)
-    case OG{e}:
-      (lh, rec(st, e))
+    case Inr{e}:
+      (lh, ih(st, e))
 
-law sorted_ins:
-  for xs  : List<&2, Nat>
-  for -lo : Nat
-  for +x  : Nat
-  SortedB(xs, lo) -> LE(lo, x) -> SortedB(insert(x, xs), lo)
+law insert_from:
+  for ~A: Data
+  for ~o: C.Ord<A>
+  for +x: A
+  for xs: List<&2, A>
+  for -lo: A
+  from(~A, ~o, lo, xs) -> C.Ord.R(A, o, lo, x) -> from(~A, ~o, lo, insert(~A, ~o, x, xs))
 
-def sorted_ins(xs, lo, x):
+def insert_from(A, o, x, xs, lo):
   match xs:
     case Nil{}:
-      sx => lx => (lx, Unit{})
-    case h <> t:
-      sx => lx => sorted_ins.fin(lo, x, h, t, sx, lx,
-        sorted_ins(t, h, x), le_case(x, h))
+      s => lx => (lx, Unit{})
+    case +h <> +t:
+      s => lx => insert_from.go(A, o, lo, x, h, t, u => insert(~A, ~o, x, t), s, lx,
+        insert_from(~A, ~o, x, t, h), C.Ord.dec(A, o, x, h))
 
-law sorted_isort:
-  for +xs: List<&2, Nat>
-  SortedB(isort(xs), 0n)
+law insert_sorted.go:
+  for -A: Data
+  for -o: C.Ord<A>
+  for -x: A
+  for -h: A
+  for -t: List<&2, A>
+  for -rec: Unit -> List<&2, A>
+  for s: from(~A, ~o, h, t)
+  for ih: from(~A, ~o, h, t) -> C.Ord.R(A, o, h, x) -> from(~A, ~o, h, rec(Unit{}))
+  for c: Or(C.Ord.R(A, o, x, h), C.Ord.R(A, o, h, x))
+  Sorted(~A, ~o, insert.go(A, o, x, h, t, rec, c))
 
-def sorted_isort(xs):
+def insert_sorted.go(A, o, x, h, t, rec, s, ih, c):
+  match c:
+    case Inl{e}:
+      (e, s)
+    case Inr{e}:
+      ih(s, e)
+
+law insert_sorted:
+  for ~A: Data
+  for ~o: C.Ord<A>
+  for +x: A
+  for xs: List<&2, A>
+  Sorted(~A, ~o, xs) -> Sorted(~A, ~o, insert(~A, ~o, x, xs))
+
+def insert_sorted(A, o, x, xs):
+  match xs:
+    case Nil{}:
+      s => Unit{}
+    case +h <> +t:
+      s => insert_sorted.go(A, o, x, h, t, u => insert(~A, ~o, x, t), s,
+        insert_from(~A, ~o, x, t, h), C.Ord.dec(A, o, x, h))
+
+# LAW: sort's output is sorted.
+law sort_sorted:
+  for ~A: Data
+  for ~o: C.Ord<A>
+  for xs: List<&2, A>
+  Sorted(~A, ~o, sort(~A, ~o, xs))
+
+def sort_sorted(A, o, xs):
   match xs:
     case Nil{}:
       Unit{}
+    case h <> +t:
+      insert_sorted(~A, ~o, h, sort(~A, ~o, t))(sort_sorted(~A, ~o, t))
+
+def bump(b: Bool, n: Nat) -> Nat:
+  match b:
+    case True{}:
+      1n+n
+    case False{}:
+      n
+
+law bump_swap:
+  for a: Bool
+  for b: Bool
+  for -n: Nat
+  {bump(a, bump(b, n)) == bump(b, bump(a, n)) : Nat}
+
+def bump_swap(a, b, n):
+  match a b:
+    case True{} True{}:
+      {==}
+    case True{} False{}:
+      {==}
+    case False{} True{}:
+      {==}
+    case False{} False{}:
+      {==}
+
+# how many elements of xs ~eq calls equal to y
+def count(~A: Data, ~eq: A -> A -> Bool, +y: A, xs: List<&2, A>) -> Nat:
+  match xs:
+    case Nil{}:
+      0n
     case h <> t:
-      sorted_ins(isort(t), 0n, h)(sorted_isort(t), Unit{})
+      bump(eq(y, h), count(~A, ~eq, y, t))
 
-law len_ins:
-  for +x : Nat
-  for xs : List<&2, Nat>
-  {1n+LL.length(Nat, xs) == LL.length(Nat, insert(x, xs)) : Nat}
+law insert_count.go:
+  for ~A: Data
+  for ~eq: A -> A -> Bool
+  for -o: C.Ord<A>
+  for +y: A
+  for +x: A
+  for +h: A
+  for +t: List<&2, A>
+  for -rec: Unit -> List<&2, A>
+  for ih: {bump(eq(y, x), count(~A, ~eq, y, t)) == count(~A, ~eq, y, rec(Unit{})) : Nat}
+  for c: Or(C.Ord.R(A, o, x, h), C.Ord.R(A, o, h, x))
+  {bump(eq(y, x), count(~A, ~eq, y, h <> t)) == count(~A, ~eq, y, insert.go(A, o, x, h, t, rec, c)) : Nat}
 
-law len_ins.fin:
-  for -x  : Nat
-  for -h  : Nat
-  for -t  : List<&2, Nat>
-  for rec : {1n+LL.length(Nat, t) == LL.length(Nat, insert(x, t)) : Nat}
-  for c   : LEOr<x, h>
-  {1n+LL.length(Nat, h <> t) == LL.length(Nat, dec(x, h, t, insert(x, t), c)) : Nat}
-
-def len_ins.fin(x, h, t, rec, c):
+def insert_count.go(A, eq, o, y, x, h, t, rec, ih, c):
   match c:
-    case OL{e}:
+    case Inl{e}:
       {==}
-    case OG{e}:
-      %rec : {2n+LL.length(Nat, t) == 1n+_ : Nat}
-      {==}
+    case Inr{e}:
+      %ih : {bump(eq(y, x), bump(eq(y, h), count(~A, ~eq, y, t))) == bump(eq(y, h), _) : Nat}
+      bump_swap(eq(y, x), eq(y, h), count(~A, ~eq, y, t))
 
-def len_ins(x, xs):
+law insert_count:
+  for ~A: Data
+  for ~o: C.Ord<A>
+  for ~eq: A -> A -> Bool
+  for +y: A
+  for +x: A
+  for xs: List<&2, A>
+  {bump(eq(y, x), count(~A, ~eq, y, xs)) == count(~A, ~eq, y, insert(~A, ~o, x, xs)) : Nat}
+
+def insert_count(A, o, eq, y, x, xs):
   match xs:
     case Nil{}:
       {==}
-    case h <> t:
-      len_ins.fin(x, h, t, len_ins(x, t), le_case(x, h))
+    case +h <> +t:
+      insert_count.go(~A, ~eq, o, y, x, h, t, u => insert(~A, ~o, x, t),
+        insert_count(~A, ~o, ~eq, y, x, t), C.Ord.dec(A, o, x, h))
 
-law len_isort:
-  for +xs: List<&2, Nat>
-  {LL.length(Nat, isort(xs)) == LL.length(Nat, xs) : Nat}
+# LAW: sort keeps every element's count.
+law sort_count:
+  for ~A: Data
+  for ~o: C.Ord<A>
+  for ~eq: A -> A -> Bool
+  for +y: A
+  for xs: List<&2, A>
+  {count(~A, ~eq, y, xs) == count(~A, ~eq, y, sort(~A, ~o, xs)) : Nat}
 
-def len_isort(xs):
+def sort_count(A, o, eq, y, xs):
   match xs:
     case Nil{}:
       {==}
-    case h <> t:
-      %len_ins(h, isort(t)) : {_ == 1n+LL.length(Nat, t) : Nat}
-      %len_isort(t) : {1n+LL.length(Nat, isort(t)) == 1n+_ : Nat}
+    case +h <> +t:
+      %insert_count(~A, ~o, ~eq, y, h, sort(~A, ~o, t)) : {count(~A, ~eq, y, h <> t) == _ : Nat}
+      %sort_count(~A, ~o, ~eq, y, t) : {count(~A, ~eq, y, h <> t) == bump(eq(y, h), _) : Nat}
       {==}
-
-law s:
-  List<&2, Nat>
-
-def s(): isort([2n, 0n, 1n])
-
-law main:
-  List<&2, Nat>
-
-def main(): s()
-
-#|[0n, 1n, 2n]
