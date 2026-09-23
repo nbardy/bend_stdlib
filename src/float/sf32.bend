@@ -31,8 +31,11 @@ def of_bits(x: U32) -> F32:
 
 # Decoding
 # --------
+# The fields are read off the word in one pass (23 mantissa bits, 8
+# exponent bits, the sign), not with U32 shifts and masks: the checker
+# evaluates a U32 operation bit by bit, and each shift costs a full pass.
 
-def decode.cls(neg: Bool, ex: U32, fr: U32, top: Bool, low: Bool, fz: Bool) -> Fmt.Val:
+def decode.go(neg: Bool, e: Nat, f: Bin.Bin, top: Bool, low: Bool, fz: Bool) -> Fmt.Val:
   match top low fz:
     case True{} low True{}:
       Fmt.Inf{neg}
@@ -41,27 +44,46 @@ def decode.cls(neg: Bool, ex: U32, fr: U32, top: Bool, low: Bool, fz: Bool) -> F
     case False{} True{} True{}:
       Fmt.Z{neg}
     case False{} True{} False{}:
-      Fmt.Fin{neg, Bin.of_u32(fr), 151n}
+      Fmt.Fin{neg, f, 151n}
     case False{} False{} fz:
-      Fmt.Fin{neg, Bin.of_u32(U32.add(fr, 8388608)), Nat.add(U32.to_nat(ex), 150n)}
+      Fmt.Fin{neg, Bin.add(f, Bin.pow2(23n)), Nat.add(e, 150n)}
 
-def decode.go(neg: Bool, +ex: U32, +fr: U32) -> Fmt.Val:
-  decode.cls(neg, ex, fr, U32.is_eq(ex, 255), U32.is_eq(ex, 0), U32.is_eq(fr, 0))
+def decode.cls(neg: Bool, +e: Nat, +f: Bin.Bin) -> Fmt.Val:
+  decode.go(neg, e, f, Nat.is_eq(e, 255n), Nat.is_eq(e, 0n), Bin.is_zero(f))
+
+def decode.sign(f: Bin.Bin, e: Bin.Bin, w: Word(1n)) -> Fmt.Val:
+  match w:
+    case WCon{s, t}:
+      decode.cls(s, Bin.to_nat(e), f)
+
+def decode.exp(f: Bin.Bin, p: Bin.Bin & Word(1n)) -> Fmt.Val:
+  (e, w) = p
+  decode.sign(f, e, w)
+
+def decode.man(p: Bin.Bin & Word(9n)) -> Fmt.Val:
+  (f, w) = p
+  decode.exp(f, Bin.take(8n, 1n, w))
 
 # the exact value of a float
 def decode(x: F32) -> Fmt.Val:
-  +b = bits(x)
-  decode.go(U32.is_ne(U32.shrn(b, 31n), 0), U32.and(U32.shrn(b, 23n), 255), U32.and(b, 8388607))
+  match x:
+    case F32{w}:
+      decode.man(Bin.take(23n, 9n, w))
 
 # Encoding
 # --------
 
-def sign(neg: Bool) -> U32:
+# the sign bit, as it sits above the 8 exponent bits
+def sign(neg: Bool) -> Bin.Bin:
   match neg:
     case True{}:
-      2147483648
+      Bin.pow2(8n)
     case False{}:
-      0
+      Bin.BZ{}
+
+# a word from its fields: 23 mantissa bits, then exponent and sign above
+def word(frac: Bin.Bin, exp: Bin.Bin, neg: Bool) -> F32:
+  F32{Bin.to_word(32n, Bin.add(Bin.low(23n, frac), Bin.shl(Bin.add(exp, sign(neg)), 23n)))}
 
 def first(r: Bin.Bin & Bool & Bool) -> Bin.Bin:
   (q, a, b) = r
@@ -75,15 +97,15 @@ def align(m: Bin.Bin, +e: Nat, +t: Nat, right: Bool) -> Bin.Bin:
     case False{}:
       Bin.shl(m, Nat.sub(e, t))
 
-def field(+t: Nat, normal: Bool) -> U32:
+def field(+t: Nat, normal: Bool) -> Bin.Bin:
   match normal:
     case True{}:
-      U32.from_nat(Nat.sub(t, 150n))
+      Bin.of_nat(Nat.sub(t, 150n))
     case False{}:
-      0
+      Bin.BZ{}
 
 def put(neg: Bool, t: Nat, +m: Bin.Bin) -> F32:
-  of_bits(U32.or(sign(neg), U32.or(U32.shln(field(t, Nat.is_eq(Bin.len(m), 24n)), 23n), U32.and(Bin.to_u32(m), 8388607))))
+  word(m, field(t, Nat.is_eq(Bin.len(m), 24n)), neg)
 
 # a finite value that fits binary32, as bits: 24 mantissa bits when
 # normal, fewer at the smallest exponent when subnormal
@@ -94,9 +116,9 @@ def encode.fin(neg: Bool, +m: Bin.Bin, +e: Nat) -> F32:
 def encode(v: Fmt.Val) -> F32:
   match v:
     case Fmt.Z{neg}:
-      of_bits(sign(neg))
+      word(Bin.BZ{}, Bin.BZ{}, neg)
     case Fmt.Inf{neg}:
-      of_bits(U32.or(sign(neg), 2139095040))
+      word(Bin.BZ{}, Bin.of_nat(255n), neg)
     case Fmt.NaN{}:
       of_bits(2143289344)
     case Fmt.Fin{neg, m, e}:

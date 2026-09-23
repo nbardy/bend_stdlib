@@ -241,3 +241,47 @@ def of_u32(x: U32) -> Bin:
 
 def to_u32(a: Bin) -> U32:
   U32{to_word(32n, a)}
+
+def to_nat(a: Bin) -> Nat:
+  match a:
+    case BZ{}:
+      0n
+    case B0{r}:
+      Nat.double(to_nat(r))
+    case B1{r}:
+      1n+Nat.double(to_nat(r))
+
+def of_nat(n: Nat) -> Bin:
+  match n:
+    case 0n:
+      BZ{}
+    case 1n+k:
+      inc(of_nat(k))
+
+# the low k bits of a
+def low(k: Nat, a: Bin) -> Bin:
+  match k:
+    case 0n:
+      BZ{}
+    case 1n+j:
+      match a:
+        case BZ{}:
+          BZ{}
+        case B0{r}:
+          B0{low(j, r)}
+        case B1{r}:
+          B1{low(j, r)}
+
+def take.cons(-r: Nat, b: Bool, p: Bin & Word(r)) -> Bin & Word(r):
+  (x, w) = p
+  (cons(b, x), w)
+
+# the low k bits of a word as a Bin, and the word that remains
+def take(k: Nat, -r: Nat, w: Word(Nat.add(k, r))) -> Bin & Word(r):
+  match k:
+    case 0n:
+      (BZ{}, w)
+    case 1n+j:
+      match w:
+        case WCon{b, t}:
+          take.cons(r, b, take(j, r, t))
