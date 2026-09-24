@@ -2,11 +2,11 @@ import Base
 import ./breakout.bend as B
 
 # breakout_window.bend: play apps/breakout.bend in a window with the mouse.
-# The paddle steps toward the mouse's x; closing the window or losing the
-# last life ends the game.
+# The paddle's centre follows the mouse's x; closing the window or losing
+# the last life ends the game.
 
 type Play is Data:
-  Play{g: B.Game, aim: Nat}
+  Play{g: B.Game, aim: F32}
 
 def within(+x: Nat, +lo: Nat, +w: Nat) -> Bool:
   Bool.and(Nat.is_ge(x, lo), Nat.is_lt(x, Nat.add(lo, w)))
@@ -26,13 +26,15 @@ def brick_px(alive: Maybe<&2, Bool>, row: Nat) -> U32:
   match alive:
     case Some{True{}}:
       brick_color(row)
-    case _:
+    case Some{False{}}:
+      1052688
+    case None{}:
       1052688
 
 def zone_px(z: Bool, bricks: List<&2, Bool>, +x: Nat, +y: Nat) -> U32:
   match z:
     case True{}:
-      brick_px(List.get(&2, Bool, bricks, B.brick_idx(x, y)), Nat.div(Nat.sub(y, 16n), 8n))
+      brick_px(List.get(&2, Bool, bricks, B.brick_at(x, y)), Nat.div(Nat.sub(y, 16n), 8n))
     case False{}:
       1052688
 
@@ -41,7 +43,7 @@ def paddle_px(on: Bool, bricks: List<&2, Bool>, +x: Nat, +y: Nat) -> U32:
     case True{}:
       65535
     case False{}:
-      zone_px(B.in_zone(y), bricks, x, y)
+      zone_px(B.in_rows(y), bricks, x, y)
 
 def ball_px(on: Bool, +pad: Nat, bricks: List<&2, Bool>, +x: Nat, +y: Nat) -> U32:
   match on:
@@ -52,8 +54,8 @@ def ball_px(on: Bool, +pad: Nat, bricks: List<&2, Bool>, +x: Nat, +y: Nat) -> U3
 
 def color(g: B.Game, +x: Nat, +y: Nat) -> U32:
   match g:
-    case B.Game{pad, +bx, +by, dx, dy, bricks, lives, score}:
-      ball_px(Bool.and(within(x, bx, 4n), within(y, by, 4n)), pad, bricks, x, y)
+    case B.Game{pad, bx, by, vx, vy, bricks, lives, score}:
+      ball_px(Bool.and(within(x, F32.to_nat(bx), 4n), within(y, F32.to_nat(by), 4n)), F32.to_nat(pad), bricks, x, y)
 
 # a quadtree of 2x2-pixel leaves over the square at (x, y) of side 2^(d+1)
 def frame(+g: B.Game, +d: Nat, +x: Nat, +y: Nat) -> Image:
@@ -70,23 +72,8 @@ def view(p: Play) -> Pair(Play, Image):
     case Play{+g, aim}:
       (Play{g, aim}, frame(g, 7n, 0n, 0n))
 
-def toward(c: Cmp) -> B.Input:
-  match c:
-    case LT{}:
-      B.Right{}
-    case EQ{}:
-      B.Stay{}
-    case GT{}:
-      B.Left{}
-
-def pad_of(g: B.Game) -> Nat:
-  match g:
-    case B.Game{pad, bx, by, dx, dy, bricks, lives, score}:
-      pad
-
-def advance(g: B.Game, +aim: Nat) -> Play:
-  +g2 = g
-  Play{B.step(g2, toward(Nat.cmp(Nat.add(pad_of(g2), 20n), aim))), aim}
+def advance(g: B.Game, +aim: F32) -> Play:
+  Play{B.step(g, aim), aim}
 
 def alive(p: Play, dead: Bool) -> IO(Maybe<Play>):
   match dead:
@@ -111,9 +98,9 @@ def tick(events: List<Event>, p: Play) -> IO(Maybe<Play>):
     case Con{Move{x, y}, rest}:
       match p:
         case Play{g, aim}:
-          tick(rest, Play{g, U32.to_nat(x)})
+          tick(rest, Play{g, U32.to_f32(x)})
     case Con{e, rest}:
       tick(rest, p)
 
 def main() -> IO(Unit):
-  App.run(~Play, ~App{view, tick}, "Breakout", 256, 256, Play{B.init(), 128n})
+  App.run(~Play, ~App{view, tick}, "Breakout", 256, 256, Play{B.init(), 128.0})

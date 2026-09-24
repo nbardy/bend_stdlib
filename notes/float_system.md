@@ -22,9 +22,9 @@ with the first SF32; reading bit fields off the word instead of using
 U32 shifts brings it to 5-6.5 s with no checker change. A 31-line checker
 patch that computes Base `Nat` operations on closed numbers natively
 brings it to about 3 s and leaves all 1427 upstream tests unchanged
-(`agent_notes/patches/checker_nat_native.diff`). The stack overflow on
-large `Nat` laws is a separate, smaller fix: comparing constructor chains
-by a tail call (`agent_notes/upstream_issue_checker_numbers.md`). Larger variants that
+(`notes/patches/checker_nat_native.diff`; not filed upstream). The stack
+overflow on large `Nat` laws is a separate, smaller fix: comparing
+constructor chains in a loop (bendlang/bend#1016). Larger variants that
 also accelerated `U32` gained little on top and were dropped; one of them
 hung on a symbolic upstream proof.
 
@@ -55,7 +55,7 @@ or absent from all of them.
    types, and a law over `~` arguments is proven once with them opaque.
 4. **Reflection costs nothing.** A program instantiated at a syntax-tree
    builder evaluates, by `{==}`, to the same program at `F32`, for all
-   inputs (probed: `agent_notes/probes/reflect.bend`).
+   inputs (probed: `notes/probes/reflect.bend`).
 5. **One pure program, four lanes.** The same code runs on C, CUDA,
    Metal and JS, deterministically: no scheduler-dependent results, no
    data races. Parallelism is a fork-join tree fixed by the program.
@@ -196,7 +196,7 @@ Needed by all pillars, smallest first:
 
 1. **Bits**: decode/encode between `F32` and a sum type
    (`Zero | Inf | NaN | Fin{..., ok}`), proven inverse. Decoding
-   literals already computes (probed: `agent_notes/probes/decode.bend`).
+   literals already computes (probed: `notes/probes/decode.bend`).
 2. **Binary numbers and dyadics**: exact arithmetic on bit lists with
    ordered-ring laws. Must be binary: unary `Nat` overflows the checker.
 3. **Rounding**: round-to-nearest-even for a format given as a value,

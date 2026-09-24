@@ -38,7 +38,7 @@ def keep(g: Game, i: Input) -> OnField(g) -> OnField(step(g, i)):
     case Game{p, s} Hit{}:
       k => k
 
-# LAW: from any state on the field, every input sequence stays on it
+# from any state on the field, every input sequence stays on it
 law always_on_field:
   for +g: Game
   for inputs: List<&2, Input>

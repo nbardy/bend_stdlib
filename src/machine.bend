@@ -13,7 +13,7 @@ import Base
 def run(~S: Data, ~I: Data, ~step: S -> I -> S, s: S, xs: List<&2, I>) -> S:
   List.foldl(~&2, ~I, ~S, ~step, xs, s)
 
-# LAW: a step that keeps Inv keeps it over any input list
+# a step that keeps Inv keeps it over any input list
 law run_inv:
   for ~S: Data
   for ~I: Data

@@ -30,8 +30,9 @@ Facts marked (probe) were run on Bend 2.0.25 on 2026-09-23; facts marked
   - Not checked: whether Apple GPUs flush subnormals to zero, and how
     far `exp`, `log`, `pow` and the fast trig functions are from
     correctly rounded on each backend.
-- `apps/fluid.bend` prints identical F32 results on the interpreter
-  (JS) and the native binary (C). That is a test, not a proof.
+- `apps/fluid.bend` and `apps/breakout.bend` print identical F32
+  results on the interpreter (JS) and the native binary (C); `gate.sh`
+  checks it. That is a test, not a proof.
 
 ## Bit-field predicates
 
@@ -75,9 +76,8 @@ operations instead of one float instruction.
 Layer 3 is where hardware enters. `F32.add` is opaque, so the link
 cannot be proven, and a user file cannot assert it. Three options:
 
-1. **Assume it as a hypothesis (library, possible now).** A law takes
-   the link as a `~` argument, a dictionary such as
-   `~ieee: IEEE32Correct` holding one equation per operation, and is
+1. **Assume it as a hypothesis (library, done).** A law takes the link
+   as a `~` argument (`~lt: F32.LtOk()`, `~ok: SF32.HardOk()`) and is
    proven under it. The law checks without anyone supplying the
    dictionary. Every result is then "proven, given that the hardware
    rounds correctly", which is the same trust Flocq-based work places in
@@ -127,20 +127,28 @@ is the graded-monad idea written with types the checker already has.
   by VCFloat.
 - Rendering and visual-only simulation stay tested, not proven.
 
-## Suggested order
+## What is built
 
-1. `float/bits.bend`: decode, encode, classification. Small; grounds
-   everything else.
-2. `float/dyadic.bend` and `float/round.bend`: exact binary arithmetic
-   on `U32`-backed mantissas, round-to-nearest-even, and the half-ulp
-   error lemma. This is the Flocq core, and the largest proof effort.
-3. `float/soft.bend`: `SF32.add`, `SF32.mul` proven against the model,
-   and differential tests against hardware on every backend, including
-   the GPU.
-4. `float/ieee.bend`: the hardware hypothesis as a dictionary, and error
-   bound laws for a leapfrog step.
-5. With 1-3 as evidence, an upstream issue proposing structural F32 in
-   Base for `+ - * / sqrt`.
+- `src/float/bin.bend`, `src/float/format.bend`: exact values
+  `m * 2^(e - 300)`, formats, round to nearest even, and IEEE `+ - *`
+  as "the exact result, then round". The half-ulp error lemma is not
+  proven yet.
+- `src/float/sf32.bend`: binary32 in software. The checker computes it
+  (`0.1 + 0.2` closes by `{==}`); `examples/sf32.bend` finds 0
+  mismatches against hardware on edge cases and 3000 random pairs.
+- `src/float/num.bend`: the contract (`Impl`, `Correct`) and the
+  hardware hypothesis `SF32.HardOk()` for `+` and `*`.
+- `src/float/f32.bend`: comparison and negation specified on the bits,
+  and laws about Base's own `F32.clamp` and `F32.neg` under the
+  hypotheses `LtOk` and `NegOk`. Both operations are exact, so these
+  hypotheses are small and hold on every lane. `NegOk` leaves NaNs out,
+  because the JS lane does not keep a NaN's sign or payload (the
+  differential test found this).
+- Used by `apps/breakout.bend` (the ball and paddle stay in the arena
+  for every input, NaN included; the ball's speed never changes) and
+  `apps/fluid.bend` (every float converted to an index is in range).
+- Upstream: bendlang/bend#1017 proposes structural F32 in Base.
+- Not built: error-bound laws (layer 4).
 
 ## Related work
 

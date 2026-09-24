@@ -1,7 +1,9 @@
 import Base
+import ../src/nat.bend as Nat
+import ../src/float/f32.bend as F32
 
 # fluid.bend: 2D incompressible Navier-Stokes by stable fluids (Stam 1999)
-# on a 32x32 torus, using Base only.
+# on a 32x32 torus.
 #
 # A step: add a jet of dye and upward velocity at the bottom; advect the
 # velocity by itself (semi-Lagrangian, bilinear); project it to be
@@ -16,7 +18,12 @@ import Base
 #                         packed in one array (1024 slots each) never
 #                         overlap, and Array's silent index wraparound
 #                         never aliases two cells
-# Not proven: anything about the F32 values. main prints the dye total
+# Proven, about the floats (src/float/f32.bend, assuming LtOk):
+#   cell_ok               every back-traced position, NaN and infinities
+#                         included, gives a cell index in [0, 95] and an
+#                         interpolation weight in [0, 1], so F32.to_u32
+#                         never sees a value it is undefined on
+# Not proven: the values the solver computes. main prints the dye total
 # and the divergence before and after projection instead. The pressure
 # solve is 20 Jacobi sweeps, which removes most short-range divergence
 # but converges slowly on smooth, large-scale divergence (at 400 sweeps
@@ -25,48 +32,14 @@ import Base
 # All fields live in one Array<F32>, threaded through each kernel by a
 # state monad (St), so a kernel is a do block of reads and writes.
 
-# Order on Nat (Base has none)
-# ----------------------------
-
-def LE(a: Nat, b: Nat) -> Data:
-  match a b:
-    case 0n y:
-      Unit
-    case 1n+x 0n:
-      Empty
-    case 1n+x 1n+y:
-      LE(x, y)
-
-def LT(a: Nat, b: Nat) -> Data:
-  LE(1n+a, b)
-
-law IsTrue:
-  for c: Bool
-  Type
-
-def IsTrue(c):
-  match c:
-    case True{}:
-      Unit
-    case False{}:
-      Empty
-
-law IsFalse:
-  for c: Bool
-  Type
-
-def IsFalse(c):
-  match c:
-    case False{}:
-      Unit
-    case True{}:
-      Empty
+# Grid lemmas
+# ------------
 
 # a < b means Nat.is_eq says they differ
 law lt_ne:
   for a: Nat
   for b: Nat
-  for lt: LT(a, b)
+  for lt: Nat.LT(a, b)
   {False{} == Nat.is_eq(a, b) : Bool}
 
 def lt_ne(a, b, lt):
@@ -91,9 +64,9 @@ def eq_of_is_eq(a, b, e):
     case 0n 0n:
       {==}
     case 0n 1n+q:
-      Empty.absurd({0n == 1n+q : Nat}, %e : IsFalse(_); Unit{})
+      Empty.absurd({0n == 1n+q : Nat}, %e : Nat.IsFalse(_); Unit{})
     case 1n+p 0n:
-      Empty.absurd({1n+p == 0n : Nat}, %e : IsFalse(_); Unit{})
+      Empty.absurd({1n+p == 0n : Nat}, %e : Nat.IsFalse(_); Unit{})
     case 1n+p 1n+q:
       Equal.cong(Nat, Nat, n => 1n+n, p, q, eq_of_is_eq(p, q, e))
 
@@ -101,14 +74,14 @@ def eq_of_is_eq(a, b, e):
 law lt_step:
   for x: Nat
   for n: Nat
-  for lt: LT(x, 1n+n)
+  for lt: Nat.LT(x, 1n+n)
   for ne: {Nat.is_eq(x, n) == False{} : Bool}
-  LT(1n+x, 1n+n)
+  Nat.LT(1n+x, 1n+n)
 
 def lt_step(x, n, lt, ne):
   match x n:
     case 0n 0n:
-      Empty.absurd(LT(1n, 1n), %ne : IsTrue(_); Unit{})
+      Empty.absurd(Nat.LT(1n, 1n), %ne : Nat.IsTrue(_); Unit{})
     case 0n 1n+m:
       Unit{}
     case 1n+p 0n:
@@ -121,8 +94,8 @@ law le_add:
   for a: Nat
   for b: Nat
   for -c: Nat
-  for h: LE(a, b)
-  LE(a, Nat.add(b, c))
+  for h: Nat.LE(a, b)
+  Nat.LE(a, Nat.add(b, c))
 
 def le_add(a, b, c, h):
   match a b:
@@ -160,8 +133,8 @@ law right_lt.go:
   for +x: Nat
   for c: Bool
   for e: {Nat.is_eq(x, 31n) == c : Bool}
-  for lt: LT(x, 32n)
-  LT(right.go(x, c), 32n)
+  for lt: Nat.LT(x, 32n)
+  Nat.LT(right.go(x, c), 32n)
 
 def right_lt.go(x, c, e, lt):
   match c:
@@ -170,20 +143,20 @@ def right_lt.go(x, c, e, lt):
     case False{}:
       lt_step(x, 31n, lt, e)
 
-# LAW: the right neighbour of a cell is a cell
+# the right neighbour of a cell is a cell
 law right_lt:
   for +x: Nat
-  for lt: LT(x, 32n)
-  LT(right(x), 32n)
+  for lt: Nat.LT(x, 32n)
+  Nat.LT(right(x), 32n)
 
 def right_lt(x, lt):
   right_lt.go(x, Nat.is_eq(x, 31n), {==}, lt)
 
-# LAW: the left neighbour of a cell is a cell
+# the left neighbour of a cell is a cell
 law left_lt:
   for x: Nat
-  for lt: LT(x, 32n)
-  LT(left(x), 32n)
+  for lt: Nat.LT(x, 32n)
+  Nat.LT(left(x), 32n)
 
 def left_lt(x, lt):
   match x:
@@ -205,7 +178,7 @@ def left_right.go(x, c, e):
     case False{}:
       {==}
 
-# LAW: stepping right then left returns to the cell
+# stepping right then left returns to the cell
 law left_right:
   for +x: Nat
   {left(right(x)) == x : Nat}
@@ -213,10 +186,10 @@ law left_right:
 def left_right(x):
   left_right.go(x, Nat.is_eq(x, 31n), {==})
 
-# LAW: stepping left then right returns to the cell
+# stepping left then right returns to the cell
 law right_left:
   for x: Nat
-  for lt: LT(x, 32n)
+  for lt: Nat.LT(x, 32n)
   {right(left(x)) == x : Nat}
 
 def right_left(x, lt):
@@ -232,9 +205,9 @@ law idx_lt.go:
   for +x: Nat
   for y: Nat
   for n: Nat
-  for hx: LT(x, 32n)
-  for hy: LT(y, n)
-  LT(idx(x, y), Nat.mul(n, 32n))
+  for hx: Nat.LT(x, 32n)
+  for hy: Nat.LT(y, n)
+  Nat.LT(idx(x, y), Nat.mul(n, 32n))
 
 def idx_lt.go(x, y, n, hx, hy):
   match y n:
@@ -247,13 +220,13 @@ def idx_lt.go(x, y, n, hx, hy):
     case 1n+p 1n+m:
       idx_lt.go(x, p, m, hx, hy)
 
-# LAW: a cell's index is inside the 1024-slot array
+# a cell's index is inside the 1024-slot array
 law idx_lt:
   for +x: Nat
   for y: Nat
-  for hx: LT(x, 32n)
-  for hy: LT(y, 32n)
-  LT(idx(x, y), 1024n)
+  for hx: Nat.LT(x, 32n)
+  for hy: Nat.LT(y, 32n)
+  Nat.LT(idx(x, y), 1024n)
 
 def idx_lt(x, y, hx, hy):
   idx_lt.go(x, y, 32n, hx, hy)
@@ -323,23 +296,56 @@ def get_raw(+i: U32) -> St(Array<F32>, F32):
 def dt() -> F32:
   0.8
 
-# bilinear sample of field f at (px, py), both offset by +32 to stay positive
-def sample(f: Nat, +px: F32, +py: F32) -> St(Array<F32>, F32):
+# where p falls on the grid: the cell's index as a float, and how far p
+# is into that cell. Both are clamped, so the index handed to
+# F32.to_u32 is always in [0, 95] and the weight in [0, 1], for every p
+# (cell_ok). A float outside u32's range, or NaN, makes that conversion
+# undefined in C, and the lanes would disagree.
+type Cell is Data:
+  Cell{i: F32, s: F32}
+
+def cell(+p: F32) -> Cell:
+  +f = F32.floor(p)
+  Cell{F32.clamp(f, 0.0, 95.0), F32.clamp(F32.sub(p, f), 0.0, 1.0)}
+
+def InCell(c: Cell) -> Type:
+  match c:
+    case Cell{i, s}:
+      F32.LE(0.0, i) & F32.LE(i, 95.0) & F32.LE(0.0, s) & F32.LE(s, 1.0)
+
+# every float, NaN and infinities included, lands in a cell (assumes
+# LtOk: the hardware's < is IEEE's)
+law cell_ok:
+  for ~lt: F32.LtOk()
+  for +p: F32
+  InCell(cell(p))
+
+def cell_ok(lt, p):
+  +f = F32.floor(p)
+  +s = F32.sub(p, f)
+  (F32.lo_le_clamp(~lt, f, 0.0, 95.0, Unit{}), F32.clamp_le_hi(~lt, f, 0.0, 95.0, Unit{}),
+   F32.lo_le_clamp(~lt, s, 0.0, 1.0, Unit{}), F32.clamp_le_hi(~lt, s, 0.0, 1.0, Unit{}))
+
+def sample.go(f: Nat, cx: Cell, cy: Cell) -> St(Array<F32>, F32):
+  Cell{fx, +sx} = cx
+  Cell{fy, +sy} = cy
   +base = U32.from_nat(Nat.mul(f, 1024n))
-  +fx = F32.floor(px)
-  +fy = F32.floor(py)
-  +i0 = U32.and(F32.to_u32(fx), 31)
-  +j0 = U32.mul(U32.and(F32.to_u32(fy), 31), 32)
+  +ix = F32.to_u32(fx)
+  +iy = F32.to_u32(fy)
+  +i0 = U32.and(ix, 31)
+  +j0 = U32.mul(U32.and(iy, 31), 32)
   +i1 = U32.and(U32.add(i0, 1), 31)
-  +j1 = U32.mul(U32.and(U32.add(U32.and(F32.to_u32(fy), 31), 1), 31), 32)
-  +sx = F32.sub(px, fx)
-  +sy = F32.sub(py, fy)
+  +j1 = U32.mul(U32.and(U32.add(U32.and(iy, 31), 1), 31), 32)
   do St<Array<F32>, F32>:
     a00 : F32 <- get_raw(U32.add(base, U32.add(j0, i0)))
     a10 : F32 <- get_raw(U32.add(base, U32.add(j0, i1)))
     a01 : F32 <- get_raw(U32.add(base, U32.add(j1, i0)))
     a11 : F32 <- get_raw(U32.add(base, U32.add(j1, i1)))
     return F32.lerp(F32.lerp(a00, a10, sx), F32.lerp(a01, a11, sx), sy)
+
+# bilinear sample of field f at (px, py), both offset by +32 to stay positive
+def sample(f: Nat, +px: F32, +py: F32) -> St(Array<F32>, F32):
+  sample.go(f, cell(px), cell(py))
 
 def back(+c: Nat, +vel: F32) -> F32:
   F32.add(F32.sub(F32.from_nat(c), F32.mul(dt(), vel)), 32.0)

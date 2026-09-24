@@ -52,7 +52,7 @@ def pop.model(-A: Data, s: List.Step<&1, A, Queue<A>>) -> List.Step<&2, A, List<
     case List.Next{x, q}:
       List.Next{x, model(A, q)}
 
-# LAW: push appends x to the model.
+# push appends x to the model.
 law push_model:
   for -A: Data
   for q: Queue<A>
@@ -81,7 +81,7 @@ def pop_model.rot(A, f):
       %List.append_nil(A, t) : {List.Next{h, t} == List.Next{h, _} : List.Step<&2, A, List<&2, A>>}
       {==}
 
-# LAW: pop returns the model's head and tail.
+# pop returns the model's head and tail.
 law pop_model:
   for -A: Data
   for q: Queue<A>

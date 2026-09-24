@@ -30,7 +30,7 @@ def back(~P: Data, ~g: C.Group<P>, ~F: P -> P, s: State<P>) -> State<P>:
       +x0 = C.Group.sub(P, g, x, w)
       State{x0, C.Group.sub(P, g, w, F(x0))}
 
-# LAW: back undoes step
+# back undoes step
 law back_step:
   for ~P: Data
   for ~g: C.Group<P>
@@ -44,22 +44,6 @@ def back_step(P, g, F, s):
       +w = C.Group.add(P, g, v, F(x))
       %C.Group.sub_add(P, g, x, w) : {State{x, v} == State{_, C.Group.sub(P, g, w, F(_))} : State<P>}
       %C.Group.sub_add(P, g, v, F(x)) : {State{x, v} == State{x, _} : State<P>}
-      {==}
-
-# LAW: step undoes back
-law step_back:
-  for ~P: Data
-  for ~g: C.Group<P>
-  for ~F: P -> P
-  for s: State<P>
-  {s == step(~P, ~g, ~F, back(~P, ~g, ~F, s)) : State<P>}
-
-def step_back(P, g, F, s):
-  match s:
-    case State{+x, +w}:
-      +x0 = C.Group.sub(P, g, x, w)
-      %C.Group.add_sub(P, g, w, F(x0)) : {State{x, w} == State{C.Group.add(P, g, x0, _), _} : State<P>}
-      %C.Group.add_sub(P, g, x, w) : {State{x, w} == State{_, w} : State<P>}
       {==}
 
 def run(~P: Data, ~g: C.Group<P>, ~F: P -> P, n: Nat, s: State<P>) -> State<P>:
@@ -92,7 +76,7 @@ def run_step(P, g, F, k, s):
     case 1n+j:
       run_step(~P, ~g, ~F, j, step(~P, ~g, ~F, s))
 
-# LAW: rewinding n steps undoes running n steps
+# rewinding n steps undoes running n steps
 law rewind_run:
   for ~P: Data
   for ~g: C.Group<P>

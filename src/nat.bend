@@ -49,6 +49,53 @@ def le_refl(a):
     case 1n+p:
       le_refl(p)
 
+law le_step:
+  for a: Nat
+  LE(a, 1n+a)
+
+def le_step(a):
+  match a:
+    case 0n:
+      Unit{}
+    case 1n+p:
+      le_step(p)
+
+law le_trans:
+  for a: Nat
+  for b: Nat
+  for c: Nat
+  for ab: LE(a, b)
+  for bc: LE(b, c)
+  LE(a, c)
+
+def le_trans(a, b, c, ab, bc):
+  match a b c:
+    case 0n b c:
+      Unit{}
+    case 1n+x 0n c:
+      match ab:
+    case 1n+x 1n+y 0n:
+      match bc:
+    case 1n+x 1n+y 1n+z:
+      le_trans(x, y, z, ab, bc)
+
+# a - k <= a (Nat.sub stops at 0)
+law sub_le:
+  for a: Nat
+  for k: Nat
+  LE(Nat.sub(a, k), a)
+
+def sub_le(a, k):
+  match a k:
+    case 0n 0n:
+      Unit{}
+    case 0n 1n+q:
+      Unit{}
+    case 1n+p 0n:
+      le_refl(1n+p)
+    case 1n++p 1n++q:
+      le_trans(Nat.sub(p, q), p, 1n+p, sub_le(p, q), le_step(p))
+
 # Compares a and b and returns the proof of the side that holds.
 def le_case(a: Nat, b: Nat) -> Or(LE(a, b), LE(b, a)):
   match a b:

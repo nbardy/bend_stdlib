@@ -1,4 +1,4 @@
-# Probe for agent_notes/float_system.md, layer 7: reflection is free.
+# Probe for notes/float_system.md, layer 7: reflection is free.
 # The syntax instance of a template program evaluates to its F32
 # instance for every input, by {==}. Checked on Bend 2.0.20 and 2.0.25.
 import Base

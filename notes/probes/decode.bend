@@ -1,4 +1,4 @@
-# Probe for agent_notes/bend_float_facts.md: functions of a float's bits
+# Probe for notes/bend_float_facts.md: functions of a float's bits
 # compute on literals. (F32 arithmetic does not: the law
 # {F32.add(1.0, 1.0) == 2.0 : F32} fails with "expected F32.add(1.0,
 # 1.0), observed 2.0".) Mantissa and exponent stay U32: converting them

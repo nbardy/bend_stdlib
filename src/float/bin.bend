@@ -234,14 +234,6 @@ def to_word(n: Nat, a: Bin) -> Word(n):
         case B1{r}:
           WCon{True{}, to_word(p, r)}
 
-def of_u32(x: U32) -> Bin:
-  match x:
-    case U32{w}:
-      of_word(32n, w)
-
-def to_u32(a: Bin) -> U32:
-  U32{to_word(32n, a)}
-
 def to_nat(a: Bin) -> Nat:
   match a:
     case BZ{}:

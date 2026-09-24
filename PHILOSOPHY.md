@@ -23,7 +23,8 @@ checks.
 6. A module imported as `Nat` that defines `ge_refl` replaces Base's
    `Nat.ge_refl` in the importing file, with no warning.
 7. Every `F32` operation in Base is an unproven law, so no float
-   arithmetic computes in the checker.
+   arithmetic computes in the checker. A float is its 32 bits, so
+   functions of the bits do (`src/float/`).
 
 ## Do and don't
 
@@ -112,7 +113,16 @@ checks.
 - Do use `Nat` for counts, indices and anything a proof inducts on.
 - Do keep game state in `U32` and prove order facts through
   `U32.cmp_nat`.
-- Don't state laws about `F32` arithmetic (fact 7). Test float code.
+- Do state a float law through the bits: specify the operation on the
+  bits and take "the hardware matches" as a `~` argument
+  (`~lt: F32.LtOk()`), so each law says what it assumes. Prefer exact
+  operations (comparison, negation, clamping); their hypotheses hold on
+  every lane.
+- Do clamp a float before it becomes an index or leaves the bounds a
+  law is about. `F32.clamp_le_hi` and `F32.lo_le_clamp` hold for every
+  input, NaN and infinities included.
+- Test what is not proven: `examples/sf32.bend` compares the software
+  floats with the hardware's.
 
 ### Tests
 

@@ -42,9 +42,27 @@ native binary:
   rewound to the exact start state, with a law that this holds for every
   state and step count.
 - `examples/tour.bend`: sort, queue, parallel sum, vectors.
+- `examples/sf32.bend`: float facts closed by `{==}` (`0.1 + 0.2` is
+  `0x3E99999A`), and software floats, comparison and negation against
+  the hardware's on edge cases and random bit patterns.
+
+## Apps
+
+- `apps/breakout.bend`: Breakout with `F32` physics, played with the
+  mouse by `apps/breakout_window.bend`. For every input list, including
+  NaN and infinite mouse positions: the paddle and ball stay in the
+  arena; the ball's speed never changes, bit for bit; score + 10 x
+  (bricks left) never changes; lives never increase.
+- `apps/fluid.bend`: stable fluids on a 32x32 torus. Proven: the torus
+  neighbours and cell indices, and that every back-traced position gives
+  an in-range cell index and interpolation weight, so `F32.to_u32`
+  never gets a value it is undefined on.
+
+The float laws assume only that the hardware's `<` and negation are
+IEEE 754's (`F32.LtOk()`, `F32.NegOk()`), passed as `~` arguments.
 
 The gate also checks each module on its own and that no name shadows
-Base. It passes on Bend 2.0.20, 2.0.25 and 2.0.26.
+Base. It passes on Bend 2.0.20 and 2.0.26.
 
 ## Modules
 
@@ -72,7 +90,7 @@ the accessors (`C.Ord.R`, `C.Ord.dec`, `C.Semigroup.op`, ...).
 |---|---|---|
 | type | `State<P>` | position `x`, velocity `v` |
 | def | `step`, `back`, `run`, `rewind` | take `~g: C.Group<P>` and a force `~F: P -> P` |
-| law | `back_step`, `step_back` | `back` and `step` undo each other |
+| law | `back_step` | `back` undoes `step` |
 | law | `rewind_run` | `rewind(n, run(n, s)) == s` |
 
 ### `sorted.bend` as `Sorted`
@@ -137,6 +155,19 @@ the accessors (`C.Ord.R`, `C.Ord.dec`, `C.Semigroup.op`, ...).
 | | name | |
 |---|---|---|
 | def | `Nat.LE`, `Nat.LT`, `Nat.le_case` | order as a type, and the decision |
-| law | `Nat.le_refl`, `Nat.le_of_is_lt`, `Nat.ge_of_not_lt`, `Nat.add_assoc` | |
+| law | `Nat.le_refl`, `Nat.le_step`, `Nat.le_trans`, `Nat.sub_le` | |
+| law | `Nat.le_of_is_lt`, `Nat.ge_of_not_lt`, `Nat.add_assoc` | |
 | type | `List.Step<a, A, S>` | `Stop` or `Next{x, rest}` |
 | law | `List.append_nil`, `List.append_assoc`, `List.reverse_go` | about Base's `List.append` and `List.reverse` |
+
+### `float/`: floats as bits
+
+Design and related work: [docs/floats.md](docs/floats.md).
+
+| module | as | |
+|---|---|---|
+| `float/f32.bend` | `F32` | IEEE `<` (`lt_bits`, `LE`) and negation (`neg_bits`) on the bits; laws about Base's `F32.clamp` (`clamp_le_hi`, `lo_le_clamp`) and `F32.neg` (`neg_mag`, `neg_key`) under `LtOk()` / `NegOk()` |
+| `float/sf32.bend` | `SF32` | binary32 `add`, `sub`, `mul` in software, computed by the checker; `soft()`, `hard()`, `HardOk()` |
+| `float/format.bend` | `Fmt` | exact values, formats, round to nearest even, `spec_add`, `spec_mul` |
+| `float/num.bend` | `Num` | the contract an implementation meets: `Impl`, `AddOk`, `MulOk`, `Correct` |
+| `float/bin.bend` | `Bin` | binary naturals: add, sub, mul, compare, shifts with round and sticky bits |

@@ -48,7 +48,7 @@ This is the step CompCert took in 1.12, replacing axiomatized floats with
 Flocq's executable, proven IEEE model; related work we drew on:
 VCFloat2 (Appel, Kellison), Numerical Fuzz (Kellison, Hsu), Bean.
 Design notes:
-<https://github.com/nbardy/bend_stdlib/blob/stdlib-rewrite/agent_notes/float_system.md>.
+<https://github.com/nbardy/bend_stdlib/blob/stdlib-rewrite/notes/float_system.md>.
 
 Is this something you want in Base, somewhere else, or left to
 libraries? The library can stay as it is either way.

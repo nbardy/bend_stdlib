@@ -47,7 +47,7 @@ def build(~A: Data, ~f: Nat -> A, +d: Nat, +lo: Nat) -> Tree<A>:
       l r = build(~A, ~f, p, lo) build(~A, ~f, p, Nat.add(lo, Nat.pow(2n, p)))
       Fork{l, r}
 
-# LAW: reduce agrees with foldr. With acc = Nil{}:
+# reduce agrees with foldr. With acc = Nil{}:
 # {op(reduce(t), z) == foldr(to_list(t), z)}.
 law reduce_foldr:
   for ~A: Data

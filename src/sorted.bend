@@ -128,7 +128,7 @@ def insert_sorted(A, o, x, xs):
       s => insert_sorted.go(A, o, x, h, t, u => insert(~A, ~o, x, t), s,
         insert_from(~A, ~o, x, t, h), C.Ord.dec(A, o, x, h))
 
-# LAW: sort's output is sorted.
+# sort's output is sorted.
 law sort_sorted:
   for ~A: Data
   for ~o: C.Ord<A>
@@ -212,7 +212,7 @@ def insert_count(A, o, eq, y, x, xs):
       insert_count.go(~A, ~eq, o, y, x, h, t, u => insert(~A, ~o, x, t),
         insert_count(~A, ~o, ~eq, y, x, t), C.Ord.dec(A, o, x, h))
 
-# LAW: sort keeps every element's count.
+# sort keeps every element's count.
 law sort_count:
   for ~A: Data
   for ~o: C.Ord<A>

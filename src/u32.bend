@@ -134,7 +134,7 @@ def min_le_r.go(a, b, c, e):
     case False{}:
       Nat.le_refl(U32.to_nat(b))
 
-# LAW: min(a, b) <= b
+# min(a, b) <= b
 law min_le_r:
   for +a: U32
   for +b: U32
@@ -157,7 +157,7 @@ def le_max_r.go(a, b, c, e):
     case False{}:
       Nat.ge_of_not_lt(U32.to_nat(a), U32.to_nat(b), is_lt_nat(a, b, False{}, e))
 
-# LAW: b <= max(a, b)
+# b <= max(a, b)
 law le_max_r:
   for +a: U32
   for +b: U32
@@ -166,7 +166,7 @@ law le_max_r:
 def le_max_r(a, b):
   le_max_r.go(a, b, U32.is_lt(a, b), {==})
 
-# LAW: clamp(x, lo, hi) <= hi, even when lo > hi
+# clamp(x, lo, hi) <= hi, even when lo > hi
 law clamp_le_hi:
   for +x: U32
   for +lo: U32
@@ -192,7 +192,7 @@ def lo_le_clamp.go(lo, m, hi, lm, lh, c):
     case False{}:
       lh
 
-# LAW: lo <= clamp(x, lo, hi) when lo <= hi
+# lo <= clamp(x, lo, hi) when lo <= hi
 law lo_le_clamp:
   for +x: U32
   for +lo: U32
@@ -210,13 +210,27 @@ def lo_le_clamp(x, lo, hi, lh):
 # a, and the carry out of each bit is again not(c)'s counterpart, so the
 # induction runs bit by bit. U32.add uses carry False, U32.sub carry True.
 
-# (a + b + c) - b, with carry not(c), is a
+# (a + b + c) - b, with carry not(c), is a. Each case passes the carry
+# out of its bit.
 law Word.sub_add:
   for +n: Nat
   for a: Word(n)
   for +b: Word(n)
   for c: Bool
   {a == Word.adc(n, Word.adc(n, a, b, False{}, c), b, True{}, Bool.not(c)) : Word(n)}
+
+# one bit: the bit is kept, and e is the law for the rest at the carry k
+law Word.sub_add.arm:
+  for -p: Nat
+  for -h: Bool
+  for -at: Word(p)
+  for -bt: Word(p)
+  for -k: Bool
+  for e: {at == Word.adc(p, Word.adc(p, at, bt, False{}, k), bt, True{}, Bool.not(k)) : Word(p)}
+  {WCon{h, at} == WCon{h, Word.adc(p, Word.adc(p, at, bt, False{}, k), bt, True{}, Bool.not(k))} : Word(1n+p)}
+
+def Word.sub_add.arm(p, h, at, bt, k, e):
+  Equal.cong(Word(p), Word(1n+p), w => WCon{h, w}, at, Word.adc(p, Word.adc(p, at, bt, False{}, k), bt, True{}, Bool.not(k)), e)
 
 def Word.sub_add(n, a, b, c):
   match n:
@@ -227,37 +241,21 @@ def Word.sub_add(n, a, b, c):
     case 1n+p:
       match a b c:
         case WCon{False{}, at} WCon{False{}, +bt} False{}:
-          Equal.cong(Word(p), Word(1n+p), w => WCon{False{}, w},
-            at, Word.adc(p, Word.adc(p, at, bt, False{}, False{}), bt, True{}, Bool.not(False{})),
-            Word.sub_add(p, at, bt, False{}))
+          Word.sub_add.arm(p, False{}, at, bt, False{}, Word.sub_add(p, at, bt, False{}))
         case WCon{False{}, at} WCon{False{}, +bt} True{}:
-          Equal.cong(Word(p), Word(1n+p), w => WCon{False{}, w},
-            at, Word.adc(p, Word.adc(p, at, bt, False{}, False{}), bt, True{}, Bool.not(False{})),
-            Word.sub_add(p, at, bt, False{}))
+          Word.sub_add.arm(p, False{}, at, bt, False{}, Word.sub_add(p, at, bt, False{}))
         case WCon{False{}, at} WCon{True{}, +bt} False{}:
-          Equal.cong(Word(p), Word(1n+p), w => WCon{False{}, w},
-            at, Word.adc(p, Word.adc(p, at, bt, False{}, False{}), bt, True{}, Bool.not(False{})),
-            Word.sub_add(p, at, bt, False{}))
+          Word.sub_add.arm(p, False{}, at, bt, False{}, Word.sub_add(p, at, bt, False{}))
         case WCon{False{}, at} WCon{True{}, +bt} True{}:
-          Equal.cong(Word(p), Word(1n+p), w => WCon{False{}, w},
-            at, Word.adc(p, Word.adc(p, at, bt, False{}, True{}), bt, True{}, Bool.not(True{})),
-            Word.sub_add(p, at, bt, True{}))
+          Word.sub_add.arm(p, False{}, at, bt, True{}, Word.sub_add(p, at, bt, True{}))
         case WCon{True{}, at} WCon{False{}, +bt} False{}:
-          Equal.cong(Word(p), Word(1n+p), w => WCon{True{}, w},
-            at, Word.adc(p, Word.adc(p, at, bt, False{}, False{}), bt, True{}, Bool.not(False{})),
-            Word.sub_add(p, at, bt, False{}))
+          Word.sub_add.arm(p, True{}, at, bt, False{}, Word.sub_add(p, at, bt, False{}))
         case WCon{True{}, at} WCon{False{}, +bt} True{}:
-          Equal.cong(Word(p), Word(1n+p), w => WCon{True{}, w},
-            at, Word.adc(p, Word.adc(p, at, bt, False{}, True{}), bt, True{}, Bool.not(True{})),
-            Word.sub_add(p, at, bt, True{}))
+          Word.sub_add.arm(p, True{}, at, bt, True{}, Word.sub_add(p, at, bt, True{}))
         case WCon{True{}, at} WCon{True{}, +bt} False{}:
-          Equal.cong(Word(p), Word(1n+p), w => WCon{True{}, w},
-            at, Word.adc(p, Word.adc(p, at, bt, False{}, True{}), bt, True{}, Bool.not(True{})),
-            Word.sub_add(p, at, bt, True{}))
+          Word.sub_add.arm(p, True{}, at, bt, True{}, Word.sub_add(p, at, bt, True{}))
         case WCon{True{}, at} WCon{True{}, +bt} True{}:
-          Equal.cong(Word(p), Word(1n+p), w => WCon{True{}, w},
-            at, Word.adc(p, Word.adc(p, at, bt, False{}, True{}), bt, True{}, Bool.not(True{})),
-            Word.sub_add(p, at, bt, True{}))
+          Word.sub_add.arm(p, True{}, at, bt, True{}, Word.sub_add(p, at, bt, True{}))
 
 # (a - b) + b, with carry not(c), is a
 law Word.add_sub:
@@ -266,6 +264,19 @@ law Word.add_sub:
   for +b: Word(n)
   for c: Bool
   {a == Word.adc(n, Word.adc(n, a, b, True{}, c), b, False{}, Bool.not(c)) : Word(n)}
+
+# one bit: the bit is kept, and e is the law for the rest at the carry k
+law Word.add_sub.arm:
+  for -p: Nat
+  for -h: Bool
+  for -at: Word(p)
+  for -bt: Word(p)
+  for -k: Bool
+  for e: {at == Word.adc(p, Word.adc(p, at, bt, True{}, k), bt, False{}, Bool.not(k)) : Word(p)}
+  {WCon{h, at} == WCon{h, Word.adc(p, Word.adc(p, at, bt, True{}, k), bt, False{}, Bool.not(k))} : Word(1n+p)}
+
+def Word.add_sub.arm(p, h, at, bt, k, e):
+  Equal.cong(Word(p), Word(1n+p), w => WCon{h, w}, at, Word.adc(p, Word.adc(p, at, bt, True{}, k), bt, False{}, Bool.not(k)), e)
 
 def Word.add_sub(n, a, b, c):
   match n:
@@ -276,39 +287,23 @@ def Word.add_sub(n, a, b, c):
     case 1n+p:
       match a b c:
         case WCon{False{}, at} WCon{False{}, +bt} False{}:
-          Equal.cong(Word(p), Word(1n+p), w => WCon{False{}, w},
-            at, Word.adc(p, Word.adc(p, at, bt, True{}, False{}), bt, False{}, Bool.not(False{})),
-            Word.add_sub(p, at, bt, False{}))
+          Word.add_sub.arm(p, False{}, at, bt, False{}, Word.add_sub(p, at, bt, False{}))
         case WCon{False{}, at} WCon{False{}, +bt} True{}:
-          Equal.cong(Word(p), Word(1n+p), w => WCon{False{}, w},
-            at, Word.adc(p, Word.adc(p, at, bt, True{}, True{}), bt, False{}, Bool.not(True{})),
-            Word.add_sub(p, at, bt, True{}))
+          Word.add_sub.arm(p, False{}, at, bt, True{}, Word.add_sub(p, at, bt, True{}))
         case WCon{False{}, at} WCon{True{}, +bt} False{}:
-          Equal.cong(Word(p), Word(1n+p), w => WCon{False{}, w},
-            at, Word.adc(p, Word.adc(p, at, bt, True{}, False{}), bt, False{}, Bool.not(False{})),
-            Word.add_sub(p, at, bt, False{}))
+          Word.add_sub.arm(p, False{}, at, bt, False{}, Word.add_sub(p, at, bt, False{}))
         case WCon{False{}, at} WCon{True{}, +bt} True{}:
-          Equal.cong(Word(p), Word(1n+p), w => WCon{False{}, w},
-            at, Word.adc(p, Word.adc(p, at, bt, True{}, False{}), bt, False{}, Bool.not(False{})),
-            Word.add_sub(p, at, bt, False{}))
+          Word.add_sub.arm(p, False{}, at, bt, False{}, Word.add_sub(p, at, bt, False{}))
         case WCon{True{}, at} WCon{False{}, +bt} False{}:
-          Equal.cong(Word(p), Word(1n+p), w => WCon{True{}, w},
-            at, Word.adc(p, Word.adc(p, at, bt, True{}, True{}), bt, False{}, Bool.not(True{})),
-            Word.add_sub(p, at, bt, True{}))
+          Word.add_sub.arm(p, True{}, at, bt, True{}, Word.add_sub(p, at, bt, True{}))
         case WCon{True{}, at} WCon{False{}, +bt} True{}:
-          Equal.cong(Word(p), Word(1n+p), w => WCon{True{}, w},
-            at, Word.adc(p, Word.adc(p, at, bt, True{}, True{}), bt, False{}, Bool.not(True{})),
-            Word.add_sub(p, at, bt, True{}))
+          Word.add_sub.arm(p, True{}, at, bt, True{}, Word.add_sub(p, at, bt, True{}))
         case WCon{True{}, at} WCon{True{}, +bt} False{}:
-          Equal.cong(Word(p), Word(1n+p), w => WCon{True{}, w},
-            at, Word.adc(p, Word.adc(p, at, bt, True{}, False{}), bt, False{}, Bool.not(False{})),
-            Word.add_sub(p, at, bt, False{}))
+          Word.add_sub.arm(p, True{}, at, bt, False{}, Word.add_sub(p, at, bt, False{}))
         case WCon{True{}, at} WCon{True{}, +bt} True{}:
-          Equal.cong(Word(p), Word(1n+p), w => WCon{True{}, w},
-            at, Word.adc(p, Word.adc(p, at, bt, True{}, True{}), bt, False{}, Bool.not(True{})),
-            Word.add_sub(p, at, bt, True{}))
+          Word.add_sub.arm(p, True{}, at, bt, True{}, Word.add_sub(p, at, bt, True{}))
 
-# LAW: subtracting b undoes adding b, with wraparound
+# subtracting b undoes adding b, with wraparound
 law sub_add:
   for a: U32
   for b: U32
@@ -319,7 +314,7 @@ def sub_add(a, b):
     case U32{x} U32{+y}:
       Equal.cong(Word(32n), U32, w => U32{w}, x, Word.sub(32n, Word.add(32n, x, y), y), Word.sub_add(32n, x, y, False{}))
 
-# LAW: adding b undoes subtracting b, with wraparound
+# adding b undoes subtracting b, with wraparound
 law add_sub:
   for a: U32
   for b: U32

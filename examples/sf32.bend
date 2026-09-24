@@ -2,6 +2,7 @@ import Base
 import ../src/float/format.bend as Fmt
 import ../src/float/num.bend as Num
 import ../src/float/sf32.bend as SF32
+import ../src/float/f32.bend as F32
 
 # sf32.bend: software binary32 checked two ways.
 #
@@ -9,25 +10,26 @@ import ../src/float/sf32.bend as SF32
 # by {==}, because SF32 computes.
 #
 # At run time: SF32.add and SF32.mul against the hardware's F32.add and
-# F32.mul on random bit patterns (every exponent, subnormals, infinities,
+# F32.mul, and F32.lt_bits and F32.neg_bits against F32.is_lt and F32.neg
+# (the hypotheses LtOk and NegOk), on random bit patterns (every exponent, subnormals, infinities,
 # NaNs) and on hand-picked edge cases. A mismatch means the spec in
 # format.bend differs from IEEE 754 as the backend implements it.
 
-# LAW: 1.5 + 2.25 is exactly 3.75
+# 1.5 + 2.25 is exactly 3.75
 law add_exact:
   {SF32.add(1.5, 2.25) == 3.75 : F32}
 
 def add_exact():
   {==}
 
-# LAW: 0.1 + 0.2 rounds to the float just above 0.3 (0x3E99999A)
+# 0.1 + 0.2 rounds to the float just above 0.3 (0x3E99999A)
 law add_rounds:
   {SF32.bits(SF32.add(0.1, 0.2)) == 1050253722 : U32}
 
 def add_rounds():
   {==}
 
-# LAW: the software implementation meets the contract at a point
+# the software implementation meets the contract at a point
 law soft_ok:
   Num.AddOk(~F32, ~SF32.soft(), 0.1, 0.2)
 
@@ -53,8 +55,13 @@ def bump(b: Bool, n: Nat) -> Nat:
     case False{}:
       1n+n
 
+# negation is compared bit for bit on non-NaNs (NegOk leaves NaNs out)
+def exact(+a: F32, +b: F32) -> Bool:
+  Bool.or(U32.is_eq(SF32.bits(a), SF32.bits(b)), is_nan(a))
+
 def pair(+a: F32, +b: F32, n: Nat) -> Nat:
-  bump(same(SF32.mul(a, b), F32.mul(a, b)), bump(same(SF32.add(a, b), F32.add(a, b)), n))
+  +m = bump(same(SF32.mul(a, b), F32.mul(a, b)), bump(same(SF32.add(a, b), F32.add(a, b)), n))
+  bump(exact(F32.neg_bits(a), F32.neg(a)), bump(Bool.not(Bool.xor(F32.lt_bits(a, b), F32.is_lt(a, b))), m))
 
 # mismatches over k random pairs
 def random(k: Nat, +s: U32, n: Nat) -> Nat:

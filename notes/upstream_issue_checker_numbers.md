@@ -61,7 +61,7 @@ recurse as now. Showing a false law about a huge term can overflow too,
 so `book_err` also catches an overflow raised while showing an error.
 About 25 lines in `bend2/bend.ts` (2 removed), 5 in `bend2/main.ts`, and a test
 (`tests/check/nat_long_chain.bend`); the diff is at
-<https://github.com/nbardy/bend_stdlib/blob/stdlib-rewrite/agent_notes/patches/checker_compare_overflow.diff>.
+<https://github.com/nbardy/bend_stdlib/blob/stdlib-rewrite/notes/patches/checker_compare_overflow.diff>.
 With it: this law checks in 0.3 s and the same law at `1000000n` in
 0.7 s; false laws are rejected with the same messages as today; every
 file in `tests/*/*.bend` gives identical `--check-only` output. The

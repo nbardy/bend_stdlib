@@ -45,10 +45,14 @@ def strip(neg: Bool, m: Bin.Bin, e: Nat) -> Val:
 
 def canon(v: Val) -> Val:
   match v:
+    case Z{neg}:
+      Z{neg}
+    case Inf{neg}:
+      Inf{neg}
+    case NaN{}:
+      NaN{}
     case Fin{neg, m, e}:
       strip(neg, m, e)
-    case v:
-      v
 
 # Rounding
 # --------
@@ -143,15 +147,21 @@ def add.inf(+na: Bool, b: Val) -> Val:
       add.inf.go(na, Bool.xor(na, nb))
     case NaN{}:
       NaN{}
-    case b:
+    case Z{nb}:
+      Inf{na}
+    case Fin{nb, mb, eb}:
       Inf{na}
 
 def add.zero(na: Bool, b: Val) -> Val:
   match b:
     case Z{nb}:
       Z{Bool.and(na, nb)}
-    case b:
-      b
+    case Inf{nb}:
+      Inf{nb}
+    case NaN{}:
+      NaN{}
+    case Fin{nb, mb, eb}:
+      Fin{nb, mb, eb}
 
 # IEEE addition: the exact sum, rounded; x + (-x) is +0
 def spec_add(f: Format, a: Val, b: Val) -> Val:

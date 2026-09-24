@@ -120,7 +120,7 @@ def encode(v: Fmt.Val) -> F32:
     case Fmt.Inf{neg}:
       word(Bin.BZ{}, Bin.of_nat(255n), neg)
     case Fmt.NaN{}:
-      of_bits(2143289344)
+      of_bits(2143289344) # 0x7FC00000, the quiet NaN
     case Fmt.Fin{neg, m, e}:
       encode.fin(neg, m, e)
 
