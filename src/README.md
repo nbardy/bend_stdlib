@@ -198,5 +198,5 @@ stays on the field) and [`examples/rewind.bend`](../examples/rewind.bend).
 `Nat.LE(a, b)` computes to `Unit` or `Empty`, so a proof of `3 <= 5` is
 `Unit{}` and `LT(i, 0n)` cannot be built. Used in
 [`apps/breakout.bend`](../apps/breakout.bend) (lives never increase),
-[`apps/fluid.bend`](../apps/fluid.bend) (grid indices) and
+[`apps/fluid.bend`](../apps/fluid.bend) (grid indices, for any grid size) and
 [`examples/tour.bend`](../examples/tour.bend).

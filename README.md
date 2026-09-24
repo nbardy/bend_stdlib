@@ -68,9 +68,13 @@ native binary:
   arena; the ball's speed never changes, bit for bit; score + 10 x
   (bricks left) never changes; lives never increase.
 - [`apps/fluid.bend`](apps/fluid.bend): stable fluids on a 32x32 torus. Proven: the torus
-  neighbours and cell indices, and that every back-traced position gives
-  an in-range cell index and interpolation weight, so `F32.to_u32`
-  never gets a value it is undefined on.
+  neighbours and cell indices for any grid size; every back-traced
+  position gives an in-range cell index and interpolation weight, so
+  `F32.to_u32` never gets a value it is undefined on; and the app's own
+  pressure projection, run by the checker in software floats on a 4x4
+  fixture, lowers the total |divergence| from 2.4 to about 2.25e-6, with
+  the exact bits stated. `main` runs the fixture on the machine's floats
+  and prints whether the bits agree.
 
 The float laws assume only that the hardware's `<` and negation are
 IEEE 754's (`F32.LtOk()`, `F32.NegOk()`), passed as `~` arguments.
