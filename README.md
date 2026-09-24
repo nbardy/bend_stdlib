@@ -6,8 +6,8 @@ in [PHILOSOPHY.md](PHILOSOPHY.md).
 
 ```python
 import Base
-import ./src/nat.bend as Nat
-import ./src/sorted.bend as Sorted
+import bend-lawful-stdlib@0.1.0.0/src/nat.bend as Nat
+import bend-lawful-stdlib@0.1.0.0/src/sorted.bend as Sorted
 
 def sort(xs: List<&2, Nat>) -> List<&2, Nat>:
   Sorted.sort(~Nat, ~Nat.ord(), xs)
@@ -22,14 +22,28 @@ def sort_ok(xs):
 
 ## Install
 
-With pnpm, straight from git (pin a tag or commit for reproducible builds):
+From the Bend hub, by name. Nothing to install; import the modules you
+use:
+
+```python
+import bend-lawful-stdlib@0.1.0.0/src/nat.bend as Nat
+import bend-lawful-stdlib@0.1.0.0/src/float/f32.bend as F32
+```
+
+The version is fixed by content hash
+(`0x5f97f469d15c04a181dae0e4e64e1d3d`), so a build never changes under
+you.
+
+With pnpm, from git (`#v0.1.0` pins the same release):
 
 ```sh
-pnpm add bend_stdlib@github:nbardy/bend_stdlib
+pnpm add bend_stdlib@github:nbardy/bend_stdlib#v0.1.0
 ```
 
 then import by path: `import ./node_modules/bend_stdlib/src/nat.bend as Nat`.
 Copying `src/` into a project works too; Bend imports are plain paths.
+
+MIT licensed.
 
 ## Examples
 
