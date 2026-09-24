@@ -71,11 +71,36 @@ on the interpreter (JS) and the native binary (C). It prints 0
 mismatches. That test found that the JS lane does not keep a NaN's sign
 bit, so `NegOk` leaves NaNs out.
 
+**Error bounds.** [`error.bend`](error.bend) proves how far a rounded
+result can be from the exact one. `Fmt.round` is within half its own
+ulp of the exact value (`round_near`); so are `spec_mul` and a
+same-sign `spec_add` (`mul_near`, `add_near`); and, assuming `HardOk`,
+Base's `F32.mul` and `F32.add` (`hard_mul_near`, `hard_add_near`). For
+a physics step, [`examples/drift.bend`](../../examples/drift.bend)
+attaches `hard_step_near` to its own Euler step:
+
+```python
+def step(x: F32, +v: F32, dt: F32) -> F32:
+  F32.add(x, F32.mul(v, dt))
+
+law step_near:
+  for ~ok: SF32.HardOk()
+  ...                          # x, v, dt positive and finite
+  Err.Drift(Fmt.canon(SF32.decode(step(x, v, dt))), exact, ...)
+```
+
+`Drift` says: 2 |x' - (x + v * dt)| <= ulp(x') + ulp(v * dt), against the
+exact real result. `main` runs 3000 steps on the hardware, measures the
+error exactly in binary integers, and finds every one within the bound
+(and 237 of the random ones above half of it, so the bound is not
+loose).
+
 ## Modules
 
 | module | import as | what |
 |---|---|---|
 | [`f32.bend`](f32.bend) | `F32` | `lt_bits`, `LE`, `neg_bits`, `mag`, `key` on the bits; `LtOk()`, `NegOk()`; laws `clamp_le_hi`, `lo_le_clamp`, `neg_mag`, `neg_key` |
+| [`error.bend`](error.bend) | `Err` | `round_near`, `mul_near`, `add_near`, `hard_mul_near`, `hard_add_near`, `hard_step_near`: results within half an ulp; `Bound`, `Near`, `Drift` |
 | [`sf32.bend`](sf32.bend) | `SF32` | `add`, `sub`, `mul` in software; `decode`, `encode`; `soft()`, `hard()`; the assumption `HardOk()` that hardware `+` and `*` round correctly |
 | [`format.bend`](format.bend) | `Fmt` | exact values `Val` (`Z`, `Inf`, `NaN`, `Fin`), `Format`, `round`, `spec_add`, `spec_sub`, `spec_mul` |
 | [`num.bend`](num.bend) | `Num` | the contract an implementation meets: `Impl`, `AddOk`, `MulOk`, `Correct` |
@@ -94,9 +119,11 @@ and another `Format` gives another precision.
 - Prefer exact operations for laws: comparison, negation, clamping.
   Their assumptions hold on every lane. Laws about rounded results need
   `HardOk`, which Metal and CUDA have not been checked against.
-- Values the solver computes (a fluid's divergence, an integrator's
-  drift) are still tested, not proven. Error-bound laws are not built
-  yet.
+- Bound a rounded result with `error.bend`: one operation is within
+  half its own ulp; chain the bounds through a computation as
+  `hard_step_near` does. Proven so far: `*`, same-sign `+`, and one
+  Euler step. Not yet: `+` of opposite signs (cancellation), `-`, a
+  constant epsilon from input ranges, and bounds over many steps.
 
 ## Limits
 

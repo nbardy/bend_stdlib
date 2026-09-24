@@ -59,6 +59,9 @@ native binary:
 - [`examples/sf32.bend`](examples/sf32.bend): float facts closed by `{==}` (`0.1 + 0.2` is
   `0x3E99999A`), and software floats, comparison and negation against
   the hardware's on edge cases and random bit patterns.
+- [`examples/drift.bend`](examples/drift.bend): an Euler step `x + v * dt` on the
+  hardware's floats, with the proven bound on its error against exact
+  arithmetic, and a run that measures the actual error exactly.
 
 ## Apps
 

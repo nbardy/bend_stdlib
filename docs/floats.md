@@ -131,8 +131,7 @@ is the graded-monad idea written with types the checker already has.
 
 - `src/float/bin.bend`, `src/float/format.bend`: exact values
   `m * 2^(e - 300)`, formats, round to nearest even, and IEEE `+ - *`
-  as "the exact result, then round". The half-ulp error lemma is not
-  proven yet.
+  as "the exact result, then round".
 - `src/float/sf32.bend`: binary32 in software. The checker computes it
   (`0.1 + 0.2` closes by `{==}`); `examples/sf32.bend` finds 0
   mismatches against hardware on edge cases and 3000 random pairs.
@@ -148,7 +147,16 @@ is the graded-monad idea written with types the checker already has.
   for every input, NaN included; the ball's speed never changes) and
   `apps/fluid.bend` (every float converted to an index is in range).
 - Upstream: bendlang/bend#1017 proposes structural F32 in Base.
-- Not built: error-bound laws (layer 4).
+- `src/float/error.bend`: layer 4 for single operations. `Fmt.round` is
+  within half its own ulp of the exact value (`round_near`), proven by
+  an invariant of the round and sticky bits over `Bin.shr`; `Bin.add`,
+  `Bin.mul` and `Bin.shl` are proven exact; `spec_mul` and same-sign
+  `spec_add` are within half an ulp of the exact product and sum; under
+  `HardOk`, so are Base's `F32.mul` and `F32.add`; and one Euler step
+  `x + v * dt` is within half of ulp(x') + ulp(v * dt)
+  (`hard_step_near`, used by `examples/drift.bend`).
+- Not built: `+` of opposite signs and `-`; a constant epsilon from
+  input ranges; bounds over many steps. See `notes/float_error_bounds.md`.
 
 ## Related work
 

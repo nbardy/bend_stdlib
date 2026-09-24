@@ -12,6 +12,7 @@ import ./src/v2.bend as V2
 import ./src/u32.bend as U32
 import ./src/float/sf32.bend as SF32
 import ./src/float/f32.bend as F32
+import ./src/float/error.bend as Err
 
 # stdlib.bend: the package root. It imports every module, so publishing
 # it publishes all of src/.

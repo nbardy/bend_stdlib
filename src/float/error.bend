@@ -1034,6 +1034,8 @@ law adc_ok:
   for +c: Bool
   {Nat.add(bit(c), Nat.add(Bin.to_nat(a), Bin.to_nat(b))) == Bin.to_nat(Bin.adc(a, b, c)) : Nat}
 
+# Bin.adc's clauses overlap (BZ b, then a BZ), so adc(BZ, b, c) reduces
+# only once b's constructor is known: the BZ case splits b.
 def adc_ok(a, b, c):
   match a b:
     case Bin.BZ{} Bin.BZ{}:
