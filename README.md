@@ -25,7 +25,7 @@ def sort_ok(xs):
 With pnpm, straight from git (pin a tag or commit for reproducible builds):
 
 ```sh
-pnpm add bend_stdlib@github:nbardy/bend_stdlib#stdlib-rewrite
+pnpm add bend_stdlib@github:nbardy/bend_stdlib
 ```
 
 then import by path: `import ./node_modules/bend_stdlib/src/nat.bend as Nat`.
