@@ -915,3 +915,341 @@ law round_near:
 def round_near(f, neg, m, e):
   +t = Fmt.lsb(f, m, e)
   round_go_near(Fmt.top(f), neg, m, e, t, Nat.is_le(t, e), {==})
+
+# Exact binary arithmetic
+# -----------------------
+# Bin.add, Bin.mul and Bin.shl compute the exact sum, product and
+# scaling of the numbers, so a bound on a rounded Bin result is a bound
+# against the exact value.
+
+def bit(c: Bool) -> Nat:
+  match c:
+    case False{}:
+      0n
+    case True{}:
+      1n
+
+law cons_num:
+  for c: Bool
+  for +r: Bin.Bin
+  {Nat.add(bit(c), Nat.double(Bin.to_nat(r))) == Bin.to_nat(Bin.cons(c, r)) : Nat}
+
+def cons_num(c, r):
+  match c:
+    case False{}:
+      {==}
+    case True{}:
+      {==}
+
+law adc_one_ok:
+  for +a: Bin.Bin
+  for c: Bool
+  {Nat.add(bit(c), Bin.to_nat(a)) == Bin.to_nat(Bin.adc.one(a, c)) : Nat}
+
+def adc_one_ok(a, c):
+  match c:
+    case False{}:
+      {==}
+    case True{}:
+      num_inc(a)
+
+# bits 0 and 0 carry c into the low bit and nothing up
+law adc_00:
+  for +c: Bool
+  for +X: Nat
+  for +Y: Nat
+  for +r: Bin.Bin
+  for ih: {Nat.add(X, Y) == Bin.to_nat(r) : Nat}
+  {Nat.add(bit(c), Nat.add(Nat.double(X), Nat.double(Y))) == Bin.to_nat(Bin.cons(c, r)) : Nat}
+
+def adc_00(c, X, Y, r, ih):
+  %cons_num(c, r) : {Nat.add(bit(c), Nat.add(Nat.double(X), Nat.double(Y))) == _ : Nat}
+  %ih : {Nat.add(bit(c), Nat.add(Nat.double(X), Nat.double(Y))) == Nat.add(bit(c), Nat.double(_)) : Nat}
+  %Nat.double_add(X, Y) : {Nat.add(bit(c), Nat.add(Nat.double(X), Nat.double(Y))) == Nat.add(bit(c), _) : Nat}
+  {==}
+
+# bits 1 and 1 carry c into the low bit and 1 up
+law adc_11:
+  for +c: Bool
+  for +X: Nat
+  for +Y: Nat
+  for +r: Bin.Bin
+  for ih: {1n+Nat.add(X, Y) == Bin.to_nat(r) : Nat}
+  {Nat.add(bit(c), Nat.add(1n+Nat.double(X), 1n+Nat.double(Y))) == Bin.to_nat(Bin.cons(c, r)) : Nat}
+
+def adc_11(c, X, Y, r, ih):
+  %cons_num(c, r) : {Nat.add(bit(c), Nat.add(1n+Nat.double(X), 1n+Nat.double(Y))) == _ : Nat}
+  %ih : {Nat.add(bit(c), Nat.add(1n+Nat.double(X), 1n+Nat.double(Y))) == Nat.add(bit(c), Nat.double(_)) : Nat}
+  %Nat.double_add(X, Y) : {Nat.add(bit(c), Nat.add(1n+Nat.double(X), 1n+Nat.double(Y))) == Nat.add(bit(c), 2n+_) : Nat}
+  %Equal.sym(Nat, Nat.add(Nat.double(X), 1n+Nat.double(Y)), 1n+Nat.add(Nat.double(X), Nat.double(Y)), Nat.add_succ_r(Nat.double(X), Nat.double(Y))) : {Nat.add(bit(c), 1n+_) == Nat.add(bit(c), 2n+Nat.add(Nat.double(X), Nat.double(Y))) : Nat}
+  {==}
+
+# one bit set: the low bit is not(c), and c carries up
+law adc_10:
+  for c: Bool
+  for +X: Nat
+  for +Y: Nat
+  for +r: Bin.Bin
+  for ih: {Nat.add(bit(c), Nat.add(X, Y)) == Bin.to_nat(r) : Nat}
+  {Nat.add(bit(c), 1n+Nat.add(Nat.double(X), Nat.double(Y))) == Bin.to_nat(Bin.cons(Bool.not(c), r)) : Nat}
+
+def adc_10(c, X, Y, r, ih):
+  match c:
+    case False{}:
+      %ih : {1n+Nat.add(Nat.double(X), Nat.double(Y)) == 1n+Nat.double(_) : Nat}
+      %Nat.double_add(X, Y) : {1n+Nat.add(Nat.double(X), Nat.double(Y)) == 1n+_ : Nat}
+      {==}
+    case True{}:
+      %ih : {2n+Nat.add(Nat.double(X), Nat.double(Y)) == Nat.double(_) : Nat}
+      %Nat.double_add(X, Y) : {2n+Nat.add(Nat.double(X), Nat.double(Y)) == 2n+_ : Nat}
+      {==}
+
+law adc_01:
+  for +c: Bool
+  for +X: Nat
+  for +Y: Nat
+  for +r: Bin.Bin
+  for ih: {Nat.add(bit(c), Nat.add(X, Y)) == Bin.to_nat(r) : Nat}
+  {Nat.add(bit(c), Nat.add(Nat.double(X), 1n+Nat.double(Y))) == Bin.to_nat(Bin.cons(Bool.not(c), r)) : Nat}
+
+def adc_01(c, X, Y, r, ih):
+  %Equal.sym(Nat, Nat.add(Nat.double(X), 1n+Nat.double(Y)), 1n+Nat.add(Nat.double(X), Nat.double(Y)), Nat.add_succ_r(Nat.double(X), Nat.double(Y))) : {Nat.add(bit(c), _) == Bin.to_nat(Bin.cons(Bool.not(c), r)) : Nat}
+  adc_10(c, X, Y, r, ih)
+
+# Bin.adc is exact: bit(c) + a + b
+law adc_ok:
+  for a: Bin.Bin
+  for b: Bin.Bin
+  for +c: Bool
+  {Nat.add(bit(c), Nat.add(Bin.to_nat(a), Bin.to_nat(b))) == Bin.to_nat(Bin.adc(a, b, c)) : Nat}
+
+def adc_ok(a, b, c):
+  match a b:
+    case Bin.BZ{} Bin.BZ{}:
+      adc_one_ok(Bin.BZ{}, c)
+    case Bin.BZ{} Bin.B0{y}:
+      adc_one_ok(Bin.B0{y}, c)
+    case Bin.BZ{} Bin.B1{y}:
+      adc_one_ok(Bin.B1{y}, c)
+    case Bin.B0{+x} Bin.BZ{}:
+      %Nat.add_zero_r(Nat.double(Bin.to_nat(x))) : {Nat.add(bit(c), _) == Bin.to_nat(Bin.adc.one(Bin.B0{x}, c)) : Nat}
+      adc_one_ok(Bin.B0{x}, c)
+    case Bin.B1{+x} Bin.BZ{}:
+      %Nat.add_zero_r(1n+Nat.double(Bin.to_nat(x))) : {Nat.add(bit(c), _) == Bin.to_nat(Bin.adc.one(Bin.B1{x}, c)) : Nat}
+      adc_one_ok(Bin.B1{x}, c)
+    case Bin.B0{+x} Bin.B0{+y}:
+      adc_00(c, Bin.to_nat(x), Bin.to_nat(y), Bin.adc(x, y, False{}), adc_ok(x, y, False{}))
+    case Bin.B0{+x} Bin.B1{+y}:
+      adc_01(c, Bin.to_nat(x), Bin.to_nat(y), Bin.adc(x, y, c), adc_ok(x, y, c))
+    case Bin.B1{+x} Bin.B0{+y}:
+      adc_10(c, Bin.to_nat(x), Bin.to_nat(y), Bin.adc(x, y, c), adc_ok(x, y, c))
+    case Bin.B1{+x} Bin.B1{+y}:
+      adc_11(c, Bin.to_nat(x), Bin.to_nat(y), Bin.adc(x, y, True{}), adc_ok(x, y, True{}))
+
+# Bin.add is exact
+law add_ok:
+  for +a: Bin.Bin
+  for +b: Bin.Bin
+  {Nat.add(Bin.to_nat(a), Bin.to_nat(b)) == Bin.to_nat(Bin.add(a, b)) : Nat}
+
+def add_ok(a, b):
+  adc_ok(a, b, False{})
+
+law mul_double:
+  for R: Nat
+  for +B: Nat
+  {Nat.mul(Nat.double(R), B) == Nat.double(Nat.mul(R, B)) : Nat}
+
+def mul_double(R, B):
+  match R:
+    case 0n:
+      {==}
+    case 1n++p:
+      %Nat.double_add(B, Nat.mul(p, B)) : {Nat.add(B, Nat.add(B, Nat.mul(Nat.double(p), B))) == _ : Nat}
+      %mul_double(p, B) : {Nat.add(B, Nat.add(B, Nat.mul(Nat.double(p), B))) == Nat.add(Nat.double(B), _) : Nat}
+      %Nat.double_is_add(B) : {Nat.add(B, Nat.add(B, Nat.mul(Nat.double(p), B))) == Nat.add(_, Nat.mul(Nat.double(p), B)) : Nat}
+      Nat.add_assoc(B, B, Nat.mul(Nat.double(p), B))
+
+# Bin.mul is exact
+law mul_ok:
+  for a: Bin.Bin
+  for +b: Bin.Bin
+  {Nat.mul(Bin.to_nat(a), Bin.to_nat(b)) == Bin.to_nat(Bin.mul(a, b)) : Nat}
+
+def mul_ok(a, b):
+  match a:
+    case Bin.BZ{}:
+      {==}
+    case Bin.B0{+r}:
+      %mul_ok(r, b) : {Nat.mul(Nat.double(Bin.to_nat(r)), Bin.to_nat(b)) == Nat.double(_) : Nat}
+      mul_double(Bin.to_nat(r), Bin.to_nat(b))
+    case Bin.B1{+r}:
+      %add_ok(b, Bin.B0{Bin.mul(r, b)}) : {Nat.add(Bin.to_nat(b), Nat.mul(Nat.double(Bin.to_nat(r)), Bin.to_nat(b))) == _ : Nat}
+      %mul_ok(r, b) : {Nat.add(Bin.to_nat(b), Nat.mul(Nat.double(Bin.to_nat(r)), Bin.to_nat(b))) == Nat.add(Bin.to_nat(b), Nat.double(_)) : Nat}
+      %Equal.sym(Nat, Nat.mul(Nat.double(Bin.to_nat(r)), Bin.to_nat(b)), Nat.double(Nat.mul(Bin.to_nat(r), Bin.to_nat(b))), mul_double(Bin.to_nat(r), Bin.to_nat(b))) : {Nat.add(Bin.to_nat(b), _) == Nat.add(Bin.to_nat(b), Nat.double(Nat.mul(Bin.to_nat(r), Bin.to_nat(b)))) : Nat}
+      {==}
+
+# Bin.shl is exact scaling
+law shl_ok:
+  for +a: Bin.Bin
+  for n: Nat
+  {Bin.to_nat(Bin.shl(a, n)) == sh(Bin.to_nat(a), n) : Nat}
+
+def shl_ok(a, n):
+  match n:
+    case 0n:
+      {==}
+    case 1n+k:
+      %shl_ok(a, k) : {Nat.double(Bin.to_nat(Bin.shl(a, k))) == Nat.double(_) : Nat}
+      {==}
+
+# t >= e: e + (t - e) is t
+law add_sub_ge:
+  for e: Nat
+  for +t: Nat
+  {Nat.is_ge(t, e) == True{} : Bool} -> {Nat.add(e, Nat.sub(t, e)) == t : Nat}
+
+def add_sub_ge(e, t):
+  match e t:
+    case 0n 0n:
+      h => {==}
+    case 0n 1n+tp:
+      h => {==}
+    case 1n++ep 0n:
+      h => void({Nat.add(1n+ep, 0n) == 0n : Nat}, no_f(h))
+    case 1n++ep 1n++tp:
+      h => add_sub_gt.succ(ep, tp, add_sub_ge(ep, tp)(h))
+
+# e < t: e + (t - e) is t
+law add_sub_lt:
+  for e: Nat
+  for +t: Nat
+  {Nat.is_ge(e, t) == False{} : Bool} -> {Nat.add(e, Nat.sub(t, e)) == t : Nat}
+
+def add_sub_lt(e, t):
+  match e t:
+    case 0n 0n:
+      h => void({0n == 0n : Nat}, no_t(h))
+    case 0n 1n+tp:
+      h => {==}
+    case 1n++ep 0n:
+      h => void({Nat.add(1n+ep, 0n) == 0n : Nat}, no_t(h))
+    case 1n++ep 1n++tp:
+      h => add_sub_gt.succ(ep, tp, add_sub_lt(ep, tp)(h))
+
+# Laws about the IEEE operations
+# ------------------------------
+
+# the exponent of a product's exact value, 2^(ea-300) * 2^(eb-300) in
+# the offset form (both at least 150 for every binary32 value)
+def mul_exp(+ea: Nat, +eb: Nat) -> Nat:
+  Nat.sub(Nat.add(ea, eb), 300n)
+
+# a product of finite values is within half its own ulp of the exact
+# product ma * mb * 2^(ea + eb), or it overflows
+law mul_near:
+  for +f: Fmt.Format
+  for na: Bool
+  for +ma: Bin.Bin
+  for +ea: Nat
+  for nb: Bool
+  for +mb: Bin.Bin
+  for +eb: Nat
+  Near(Fmt.spec_mul(f, Fmt.Fin{na, ma, ea}, Fmt.Fin{nb, mb, eb}), sh(Nat.mul(Bin.to_nat(ma), Bin.to_nat(mb)), mul_exp(ea, eb)), Fmt.lsb(f, Bin.mul(ma, mb), mul_exp(ea, eb)))
+
+def mul_near(f, na, ma, ea, nb, mb, eb):
+  %Equal.sym(Nat, Nat.mul(Bin.to_nat(ma), Bin.to_nat(mb)), Bin.to_nat(Bin.mul(ma, mb)), mul_ok(ma, mb)) : Near(Fmt.spec_mul(f, Fmt.Fin{na, ma, ea}, Fmt.Fin{nb, mb, eb}), sh(_, mul_exp(ea, eb)), Fmt.lsb(f, Bin.mul(ma, mb), mul_exp(ea, eb)))
+  round_near(f, Bool.xor(na, nb), Bin.mul(ma, mb), mul_exp(ea, eb))
+
+# the ulp exponent spec_add rounds a sum of same-sign values to
+def sum_lsb.go(+f: Fmt.Format, +ma: Bin.Bin, +ea: Nat, +mb: Bin.Bin, +eb: Nat, hi: Bool) -> Nat:
+  match hi:
+    case True{}:
+      Fmt.lsb(f, Bin.add(Bin.shl(ma, Nat.sub(ea, eb)), mb), eb)
+    case False{}:
+      Fmt.lsb(f, Bin.add(ma, Bin.shl(mb, Nat.sub(eb, ea))), ea)
+
+def sum_lsb(+f: Fmt.Format, +ma: Bin.Bin, +ea: Nat, +mb: Bin.Bin, +eb: Nat) -> Nat:
+  sum_lsb.go(f, ma, ea, mb, eb, Nat.is_ge(ea, eb))
+
+# the exact sum of a and b aligned at b's exponent (ea >= eb)
+law add_near.hi:
+  for +f: Fmt.Format
+  for +n: Bool
+  for +ma: Bin.Bin
+  for +ea: Nat
+  for +mb: Bin.Bin
+  for +eb: Nat
+  for eh: {Nat.is_ge(ea, eb) == True{} : Bool}
+  Near(Fmt.round(f, n, Bin.add(Bin.shl(ma, Nat.sub(ea, eb)), mb), eb), Nat.add(sh(Bin.to_nat(ma), ea), sh(Bin.to_nat(mb), eb)), Fmt.lsb(f, Bin.add(Bin.shl(ma, Nat.sub(ea, eb)), mb), eb))
+
+def add_near.hi(f, n, ma, ea, mb, eb, eh):
+  +d = Nat.sub(ea, eb)
+  +A = Bin.shl(ma, d)
+  +R = Fmt.round(f, n, Bin.add(A, mb), eb)
+  +L = Fmt.lsb(f, Bin.add(A, mb), eb)
+  %add_sub_ge(eb, ea)(eh) : Near(R, Nat.add(sh(Bin.to_nat(ma), _), sh(Bin.to_nat(mb), eb)), L)
+  %sh_sh(Bin.to_nat(ma), d, eb) : Near(R, Nat.add(_, sh(Bin.to_nat(mb), eb)), L)
+  %shl_ok(ma, d) : Near(R, Nat.add(sh(_, eb), sh(Bin.to_nat(mb), eb)), L)
+  %Equal.sym(Nat, Nat.add(sh(Bin.to_nat(A), eb), sh(Bin.to_nat(mb), eb)), sh(Nat.add(Bin.to_nat(A), Bin.to_nat(mb)), eb), sh_add(Bin.to_nat(A), Bin.to_nat(mb), eb)) : Near(R, _, L)
+  %Equal.sym(Nat, Nat.add(Bin.to_nat(A), Bin.to_nat(mb)), Bin.to_nat(Bin.add(A, mb)), add_ok(A, mb)) : Near(R, sh(_, eb), L)
+  round_near(f, n, Bin.add(A, mb), eb)
+
+# the exact sum aligned at a's exponent (ea < eb)
+law add_near.lo:
+  for +f: Fmt.Format
+  for +n: Bool
+  for +ma: Bin.Bin
+  for +ea: Nat
+  for +mb: Bin.Bin
+  for +eb: Nat
+  for eh: {Nat.is_ge(ea, eb) == False{} : Bool}
+  Near(Fmt.round(f, n, Bin.add(ma, Bin.shl(mb, Nat.sub(eb, ea))), ea), Nat.add(sh(Bin.to_nat(ma), ea), sh(Bin.to_nat(mb), eb)), Fmt.lsb(f, Bin.add(ma, Bin.shl(mb, Nat.sub(eb, ea))), ea))
+
+def add_near.lo(f, n, ma, ea, mb, eb, eh):
+  +d = Nat.sub(eb, ea)
+  +B = Bin.shl(mb, d)
+  +R = Fmt.round(f, n, Bin.add(ma, B), ea)
+  +L = Fmt.lsb(f, Bin.add(ma, B), ea)
+  %add_sub_lt(ea, eb)(eh) : Near(R, Nat.add(sh(Bin.to_nat(ma), ea), sh(Bin.to_nat(mb), _)), L)
+  %sh_sh(Bin.to_nat(mb), d, ea) : Near(R, Nat.add(sh(Bin.to_nat(ma), ea), _), L)
+  %shl_ok(mb, d) : Near(R, Nat.add(sh(Bin.to_nat(ma), ea), sh(_, ea)), L)
+  %Equal.sym(Nat, Nat.add(sh(Bin.to_nat(ma), ea), sh(Bin.to_nat(B), ea)), sh(Nat.add(Bin.to_nat(ma), Bin.to_nat(B)), ea), sh_add(Bin.to_nat(ma), Bin.to_nat(B), ea)) : Near(R, _, L)
+  %Equal.sym(Nat, Nat.add(Bin.to_nat(ma), Bin.to_nat(B)), Bin.to_nat(Bin.add(ma, B)), add_ok(ma, B)) : Near(R, sh(_, ea), L)
+  round_near(f, n, Bin.add(ma, B), ea)
+
+law add_near.go:
+  for +f: Fmt.Format
+  for n: Bool
+  for +ma: Bin.Bin
+  for +ea: Nat
+  for +mb: Bin.Bin
+  for +eb: Nat
+  for hi: Bool
+  for eh: {Nat.is_ge(ea, eb) == hi : Bool}
+  Near(Fmt.add.fin.go(f, n, ma, ea, n, mb, eb, hi), Nat.add(sh(Bin.to_nat(ma), ea), sh(Bin.to_nat(mb), eb)), sum_lsb.go(f, ma, ea, mb, eb, hi))
+
+def add_near.go(f, n, ma, ea, mb, eb, hi, eh):
+  match n hi:
+    case False{} True{}:
+      add_near.hi(f, False{}, ma, ea, mb, eb, eh)
+    case True{} True{}:
+      add_near.hi(f, True{}, ma, ea, mb, eb, eh)
+    case False{} False{}:
+      add_near.lo(f, False{}, ma, ea, mb, eb, eh)
+    case True{} False{}:
+      add_near.lo(f, True{}, ma, ea, mb, eb, eh)
+
+# a sum of two finite values of the same sign is within half its own ulp
+# of the exact sum, or it overflows
+law add_near:
+  for +f: Fmt.Format
+  for +n: Bool
+  for +ma: Bin.Bin
+  for +ea: Nat
+  for +mb: Bin.Bin
+  for +eb: Nat
+  Near(Fmt.spec_add(f, Fmt.Fin{n, ma, ea}, Fmt.Fin{n, mb, eb}), Nat.add(sh(Bin.to_nat(ma), ea), sh(Bin.to_nat(mb), eb)), sum_lsb(f, ma, ea, mb, eb))
+
+def add_near(f, n, ma, ea, mb, eb):
+  add_near.go(f, n, ma, ea, mb, eb, Nat.is_ge(ea, eb), {==})
