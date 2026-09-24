@@ -22,7 +22,11 @@ checks.
    and in the checker a literal is one node (2.0.24).
 6. A module imported as `Nat` that defines `ge_refl` replaces Base's
    `Nat.ge_refl` in the importing file, with no warning.
-7. Every `F32` operation in Base is an unproven law, so no float
+7. A pair `A & B` is a `Type`, so a proof pair cannot be copied with
+   `+`. A function whose clauses overlap (`case BZ{} b`, then
+   `case a BZ{}`) reduces only once every scrutinee's constructor is
+   known.
+8. Every `F32` operation in Base is an unproven law, so no float
    arithmetic computes in the checker. A float is its 32 bits, so
    functions of the bits do (`src/float/`).
 

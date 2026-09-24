@@ -47,3 +47,13 @@ def MulOk(~T: Data, ~i: Impl<T>, a: T, b: T) -> Type:
 # an implementation that is correctly rounded everywhere
 type Correct<-T: Data, -i: Impl<T>> is Type:
   Correct{add: @a: T -> @b: T -> AddOk(~T, ~i, a, b), mul: @a: T -> @b: T -> MulOk(~T, ~i, a, b)}
+
+def Correct.add(-T: Data, -i: Impl<T>, c: Correct<T, i>, a: T, b: T) -> AddOk(~T, ~i, a, b):
+  match c:
+    case Correct{add, mul}:
+      add(a, b)
+
+def Correct.mul(-T: Data, -i: Impl<T>, c: Correct<T, i>, a: T, b: T) -> MulOk(~T, ~i, a, b):
+  match c:
+    case Correct{add, mul}:
+      mul(a, b)

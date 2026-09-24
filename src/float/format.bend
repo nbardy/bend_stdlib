@@ -87,11 +87,21 @@ def round.go(+top: Nat, neg: Bool, m: Bin.Bin, +e: Nat, +t: Nat, exact: Bool) ->
     case False{}:
       round.fin(top, neg, t, Bin.shr(Nat.sub(t, e), m, False{}, False{}))
 
-# the float of format f nearest to (-1)^neg * m * 2^(e - 300), ties to even
-def round(f: Format, neg: Bool, +m: Bin.Bin, +e: Nat) -> Val:
+# the exponent of the last bit a result of format f keeps, for m at e:
+# p bits below the top of m, but not below emin
+def lsb(f: Format, +m: Bin.Bin, +e: Nat) -> Nat:
   Format{+p, emin, emax} = f
-  +t = Nat.max(Nat.sub(Nat.add(e, Bin.len(m)), p), emin)
-  round.go(Nat.add(emax, p), neg, m, e, t, Nat.is_le(t, e))
+  Nat.max(Nat.sub(Nat.add(e, Bin.len(m)), p), emin)
+
+# one past the highest exponent a result's top bit may reach
+def top(f: Format) -> Nat:
+  Format{+p, emin, emax} = f
+  Nat.add(emax, p)
+
+# the float of format f nearest to (-1)^neg * m * 2^(e - 300), ties to even
+def round(+f: Format, neg: Bool, +m: Bin.Bin, +e: Nat) -> Val:
+  +t = lsb(f, m, e)
+  round.go(top(f), neg, m, e, t, Nat.is_le(t, e))
 
 # Addition
 # --------
