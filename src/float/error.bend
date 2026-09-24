@@ -589,24 +589,31 @@ def fin_near(q, r, s, M, k, T):
 
 # The rounded value
 # -----------------
+# From here values are compared on one scale: m at exponent t is
+# sh(m, t), so no exponent is subtracted and bounds from different
+# operations add up.
 
-# what a law says about a rounded value v of the exact X * 2^(e - 300),
-# with k low bits rounded off: a finite v is within half an ulp (2^k at
-# exponent e); zero is too; an overflow to infinity carries no bound;
-# rounding never gives NaN
-def Near(v: Fmt.Val, +X: Nat, +e: Nat, +k: Nat) -> Type:
+# a rounded value v of the exact X: a finite v is within half its own ulp
+# (2^t, t its exponent) of X; zero is within half of 2^u, the ulp of the
+# smallest value it was rounded from; infinity (overflow) carries no
+# bound; rounding never gives NaN
+def Near(v: Fmt.Val, +X: Nat, +u: Nat) -> Type:
   match v:
     case Fmt.Z{n}:
-      Bound(0n, X, k)
+      Bound(0n, X, u)
     case Fmt.Inf{n}:
       Unit
     case Fmt.NaN{}:
       Empty
-    case Fmt.Fin{n, R, t}:
-      Bound(sh(Bin.to_nat(R), Nat.sub(t, e)), X, k)
+    case Fmt.Fin{n, R, +t}:
+      Bound(sh(Bin.to_nat(R), t), X, t)
 
 def no_f(e: {False{} == True{} : Bool}) -> Empty:
   %e : Nat.IsFalse(_)
+  Unit{}
+
+def no_t(e: {True{} == False{} : Bool}) -> Empty:
+  %e : Nat.IsTrue(_)
   Unit{}
 
 def void(-A: Type, v: Empty) -> A:
@@ -646,76 +653,221 @@ def sh_num_zero(R, s, ez):
     Equal.cong(Nat, Nat, x => sh(x, s), Bin.to_nat(R), 0n, Equal.sym(Nat, 0n, Bin.to_nat(R), zero_num(R)(ez))),
     Equal.sym(Nat, 0n, sh(0n, s), sh_zero(s)))
 
-law over_near.zero:
-  for +R: Bin.Bin
-  for +s: Nat
-  for +X: Nat
-  for +k: Nat
-  for ez: {Bin.is_zero(R) == True{} : Bool}
-  for b: Bound(sh(Bin.to_nat(R), s), X, k)
-  Bound(0n, X, k)
-
-def over_near.zero(R, s, X, k, ez, b):
-  %sh_num_zero(R, s, ez) : Bound(_, X, k)
-  b
-
 law over_near.go:
   for neg: Bool
   for +R: Bin.Bin
   for +t: Nat
   for +X: Nat
-  for +e: Nat
-  for +k: Nat
+  for +u: Nat
   for z: Bool
   for ez: {Bin.is_zero(R) == z : Bool}
   for big: Bool
-  for b: Bound(sh(Bin.to_nat(R), Nat.sub(t, e)), X, k)
-  Near(Fmt.over.go(neg, R, t, z, big), X, e, k)
+  for bf: Bound(sh(Bin.to_nat(R), t), X, t)
+  for zf: Bound(sh(Bin.to_nat(R), t), X, t) -> {Bin.is_zero(R) == True{} : Bool} -> Bound(0n, X, u)
+  Near(Fmt.over.go(neg, R, t, z, big), X, u)
 
-def over_near.go(neg, R, t, X, e, k, z, ez, big, b):
+def over_near.go(neg, R, t, X, u, z, ez, big, bf, zf):
   match z big:
     case True{} big:
-      over_near.zero(R, Nat.sub(t, e), X, k, ez, b)
+      zf(bf)(ez)
     case False{} True{}:
       Unit{}
     case False{} False{}:
-      b
+      bf
 
+# over keeps a bound: zero if the mantissa is zero, infinity if too big
 law over_near:
   for +top: Nat
   for neg: Bool
   for +R: Bin.Bin
   for +t: Nat
   for +X: Nat
-  for +e: Nat
+  for +u: Nat
+  for bf: Bound(sh(Bin.to_nat(R), t), X, t)
+  for zf: Bound(sh(Bin.to_nat(R), t), X, t) -> {Bin.is_zero(R) == True{} : Bool} -> Bound(0n, X, u)
+  Near(Fmt.over(top, neg, R, t), X, u)
+
+def over_near(top, neg, R, t, X, u, bf, zf):
+  over_near.go(neg, R, t, X, u, Bin.is_zero(R), {==}, Nat.is_gt(Nat.add(t, Bin.len(R)), top), bf, zf)
+
+law bound_sh.step:
+  for +A: Nat
+  for +B: Nat
+  for +U: Nat
+  for h: Nat.LE(A, Nat.add(B, U))
+  Nat.LE(Nat.double(A), Nat.add(Nat.double(B), Nat.double(U)))
+
+def bound_sh.step(A, B, U, h):
+  %Equal.sym(Nat, Nat.add(Nat.double(B), Nat.double(U)), Nat.double(Nat.add(B, U)), Nat.double_add(B, U)) : Nat.LE(Nat.double(A), _)
+  Nat.double_mono(A, Nat.add(B, U), h)
+
+law bound_sh.go:
+  for +Y: Nat
+  for +X: Nat
   for +k: Nat
-  for b: Bound(sh(Bin.to_nat(R), Nat.sub(t, e)), X, k)
-  Near(Fmt.over(top, neg, R, t), X, e, k)
+  for b: Bound(Y, X, k)
+  Bound(Nat.double(Y), Nat.double(X), 1n+k)
 
-def over_near(top, neg, R, t, X, e, k, b):
-  over_near.go(neg, R, t, X, e, k, Bin.is_zero(R), {==}, Nat.is_gt(Nat.add(t, Bin.len(R)), top), b)
+def bound_sh.go(Y, X, k, b):
+  (l, r) = b
+  (bound_sh.step(Nat.double(Y), Nat.double(X), sh(1n, k), l), bound_sh.step(Nat.double(X), Nat.double(Y), sh(1n, k), r))
 
-law sub_self:
+# a bound scaled by 2^e
+law bound_sh:
+  for +Y: Nat
+  for +X: Nat
+  for +k: Nat
   for e: Nat
-  {0n == Nat.sub(e, e) : Nat}
+  for b: Bound(Y, X, k)
+  Bound(sh(Y, e), sh(X, e), Nat.add(e, k))
 
-def sub_self(e):
+def bound_sh(Y, X, k, e, b):
+  match e:
+    case 0n:
+      b
+    case 1n++j:
+      bound_sh.go(sh(Y, j), sh(X, j), Nat.add(j, k), bound_sh(Y, X, k, j, b))
+
+law sh_sh:
+  for +q: Nat
+  for +k: Nat
+  for e: Nat
+  {sh(sh(q, k), e) == sh(q, Nat.add(e, k)) : Nat}
+
+def sh_sh(q, k, e):
   match e:
     case 0n:
       {==}
-    case 1n+p:
-      sub_self(p)
+    case 1n+j:
+      %sh_sh(q, k, j) : {Nat.double(sh(sh(q, k), j)) == Nat.double(_) : Nat}
+      {==}
 
-# nothing rounded off: the value is exact
-law exact_near:
+law add_sub_gt.succ:
+  for +ep: Nat
+  for +tp: Nat
+  for e: {Nat.add(ep, Nat.sub(tp, ep)) == tp : Nat}
+  {1n+Nat.add(ep, Nat.sub(tp, ep)) == 1n+tp : Nat}
+
+def add_sub_gt.succ(ep, tp, e):
+  %e : {1n+Nat.add(ep, Nat.sub(tp, ep)) == 1n+_ : Nat}
+  {==}
+
+# t > e: e + (t - e) is t
+law add_sub_gt:
+  for e: Nat
+  for +t: Nat
+  {Nat.is_le(t, e) == False{} : Bool} -> {Nat.add(e, Nat.sub(t, e)) == t : Nat}
+
+def add_sub_gt(e, t):
+  match e t:
+    case 0n 0n:
+      h => {==}
+    case 0n 1n+tp:
+      h => {==}
+    case 1n++ep 0n:
+      h => void({Nat.add(1n+ep, 0n) == 0n : Nat}, no_t(h))
+    case 1n++ep 1n++tp:
+      h => add_sub_gt.succ(ep, tp, add_sub_gt(ep, tp)(h))
+
+
+# the rounded mantissa R at t, from its bound at e with k = t - e bits off
+law lift:
+  for +R: Bin.Bin
   for +X: Nat
-  for +k: Nat
   for +e: Nat
-  Bound(sh(X, Nat.sub(e, e)), X, k)
+  for +t: Nat
+  for heq: {Nat.add(e, Nat.sub(t, e)) == t : Nat}
+  for b: Bound(sh(Bin.to_nat(R), Nat.sub(t, e)), X, Nat.sub(t, e))
+  Bound(sh(Bin.to_nat(R), t), sh(X, e), t)
 
-def exact_near(X, k, e):
-  %sub_self(e) : Bound(sh(X, _), X, k)
-  (Nat.le_add_r(Nat.double(X), sh(1n, k)), Nat.le_add_r(Nat.double(X), sh(1n, k)))
+def lift(R, X, e, t, heq, b):
+  %heq : Bound(sh(Bin.to_nat(R), _), sh(X, e), _)
+  %sh_sh(Bin.to_nat(R), Nat.sub(t, e), e) : Bound(_, sh(X, e), Nat.add(e, Nat.sub(t, e)))
+  bound_sh(sh(Bin.to_nat(R), Nat.sub(t, e)), X, Nat.sub(t, e), e, b)
+
+law lift_zero.go:
+  for +R: Bin.Bin
+  for +X: Nat
+  for +t: Nat
+  for bf: Bound(sh(Bin.to_nat(R), t), X, t)
+  for ez: {Bin.is_zero(R) == True{} : Bool}
+  Bound(0n, X, t)
+
+def lift_zero.go(R, X, t, bf, ez):
+  %sh_num_zero(R, t, ez) : Bound(_, X, t)
+  bf
+
+
+law round_fin_near.at:
+  for +top: Nat
+  for neg: Bool
+  for +t: Nat
+  for +X: Nat
+  for +e: Nat
+  for +R: Bin.Bin
+  for +heq: {Nat.add(e, Nat.sub(t, e)) == t : Nat}
+  for b: Bound(sh(Bin.to_nat(R), Nat.sub(t, e)), X, Nat.sub(t, e))
+  Near(Fmt.over(top, neg, R, t), sh(X, e), t)
+
+def round_fin_near.at(top, neg, t, X, e, R, heq, b):
+  over_near(top, neg, R, t, sh(X, e), t, lift(R, X, e, t, heq, b), bf => ez => lift_zero.go(R, sh(X, e), t, bf, ez))
+
+law round_fin_near.go:
+  for +top: Nat
+  for neg: Bool
+  for +t: Nat
+  for +X: Nat
+  for +e: Nat
+  for +q: Bin.Bin
+  for +r: Bool
+  for +s: Bool
+  for +T: Nat
+  for +heq: {Nat.add(e, Nat.sub(t, e)) == t : Nat}
+  After((q, r, s), X, Nat.sub(t, e), T) -> Near(Fmt.round.fin(top, neg, t, (q, r, s)), sh(X, e), t)
+
+def round_fin_near.go(top, neg, t, X, e, q, r, s, T, heq):
+  +R = Fmt.round.up(q, Bool.and(r, Bool.or(s, Bin.odd(q))))
+  x => round_fin_near.at(top, neg, t, X, e, R, heq, fin_near(q, r, s, X, Nat.sub(t, e), T)(x))
+
+law round_fin_near:
+  for +top: Nat
+  for neg: Bool
+  for +t: Nat
+  for +X: Nat
+  for +e: Nat
+  for res: Bin.Bin & Bool & Bool
+  for +T: Nat
+  for +heq: {Nat.add(e, Nat.sub(t, e)) == t : Nat}
+  After(res, X, Nat.sub(t, e), T) -> Near(Fmt.round.fin(top, neg, t, res), sh(X, e), t)
+
+def round_fin_near(top, neg, t, X, e, res, T, heq):
+  (q, r, s) = res
+  round_fin_near.go(top, neg, t, X, e, q, r, s, T, heq)
+
+law exact_near.zero:
+  for +m: Bin.Bin
+  for +e: Nat
+  for +t: Nat
+  for ez: {Bin.is_zero(m) == True{} : Bool}
+  Bound(0n, sh(Bin.to_nat(m), e), t)
+
+def exact_near.zero(m, e, t, ez):
+  %Equal.sym(Nat, sh(Bin.to_nat(m), e), 0n, sh_num_zero(m, e, ez)) : Bound(0n, _, t)
+  (Unit{}, Unit{})
+
+# exact: m kept at e, so its value is X itself
+law exact_near:
+  for +top: Nat
+  for neg: Bool
+  for +m: Bin.Bin
+  for +e: Nat
+  for +t: Nat
+  Near(Fmt.over(top, neg, m, e), sh(Bin.to_nat(m), e), t)
+
+def exact_near(top, neg, m, e, t):
+  +Z = sh(Bin.to_nat(m), e)
+  over_near(top, neg, m, e, Z, t, (Nat.le_add_r(Nat.double(Z), sh(1n, e)), Nat.le_add_r(Nat.double(Z), sh(1n, e))), bf => ez => exact_near.zero(m, e, t, ez))
+
 
 law after_zero:
   for res: Bin.Bin & Bool & Bool
@@ -729,35 +881,6 @@ def after_zero(res, M, k, T, x):
   %Equal.sym(Nat, k, Nat.add(k, 0n), Nat.add_zero_r(k)) : After(res, M, _, T)
   x
 
-law round_fin_near.go:
-  for +top: Nat
-  for neg: Bool
-  for +t: Nat
-  for +X: Nat
-  for +e: Nat
-  for +q: Bin.Bin
-  for +r: Bool
-  for +s: Bool
-  for +T: Nat
-  After((q, r, s), X, Nat.sub(t, e), T) -> Near(Fmt.round.fin(top, neg, t, (q, r, s)), X, e, Nat.sub(t, e))
-
-def round_fin_near.go(top, neg, t, X, e, q, r, s, T):
-  x => over_near(top, neg, Fmt.round.up(q, Bool.and(r, Bool.or(s, Bin.odd(q)))), t, X, e, Nat.sub(t, e), fin_near(q, r, s, X, Nat.sub(t, e), T)(x))
-
-law round_fin_near:
-  for +top: Nat
-  for neg: Bool
-  for +t: Nat
-  for +X: Nat
-  for +e: Nat
-  for res: Bin.Bin & Bool & Bool
-  for +T: Nat
-  After(res, X, Nat.sub(t, e), T) -> Near(Fmt.round.fin(top, neg, t, res), X, e, Nat.sub(t, e))
-
-def round_fin_near(top, neg, t, X, e, res, T):
-  (q, r, s) = res
-  round_fin_near.go(top, neg, t, X, e, q, r, s, T)
-
 law round_go_near:
   for +top: Nat
   for neg: Bool
@@ -765,31 +888,30 @@ law round_go_near:
   for +e: Nat
   for +t: Nat
   for exact: Bool
-  Near(Fmt.round.go(top, neg, m, e, t, exact), Bin.to_nat(m), e, Nat.sub(t, e))
+  for eq: {Nat.is_le(t, e) == exact : Bool}
+  Near(Fmt.round.go(top, neg, m, e, t, exact), sh(Bin.to_nat(m), e), t)
 
-def round_go_near(top, neg, m, e, t, exact):
+def round_go_near(top, neg, m, e, t, exact, eq):
   match exact:
     case True{}:
-      +k = Nat.sub(t, e)
-      +X = Bin.to_nat(m)
-      over_near(top, neg, m, e, X, e, k, exact_near(X, k, e))
+      exact_near(top, neg, m, e, t)
     case False{}:
       +k = Nat.sub(t, e)
       +X = Bin.to_nat(m)
-      round_fin_near(top, neg, t, X, e, Bin.shr(k, m, False{}, False{}), rest(k, m, 0n, 0n))(
+      round_fin_near(top, neg, t, X, e, Bin.shr(k, m, False{}, False{}), rest(k, m, 0n, 0n), add_sub_gt(e, t)(eq))(
         after_zero(Bin.shr(k, m, False{}, False{}), X, k, rest(k, m, 0n, 0n),
           shr_ok(k, m, False{}, False{}, 0n, X, 0n)(Nat.add_zero_r(X))(Unit{})))
 
-# Fmt.round is correct to half an ulp: the result is within 2^(k-1) of
-# m at exponent e, where k = lsb - e bits were rounded off; or it is
-# infinity, when it overflows
+# Fmt.round is correct to half an ulp: a finite result is within half its
+# own ulp of m * 2^e, a zero within half of 2^lsb; or it overflows to
+# infinity
 law round_near:
   for +f: Fmt.Format
   for neg: Bool
   for +m: Bin.Bin
   for +e: Nat
-  Near(Fmt.round(f, neg, m, e), Bin.to_nat(m), e, Nat.sub(Fmt.lsb(f, m, e), e))
+  Near(Fmt.round(f, neg, m, e), sh(Bin.to_nat(m), e), Fmt.lsb(f, m, e))
 
 def round_near(f, neg, m, e):
   +t = Fmt.lsb(f, m, e)
-  round_go_near(Fmt.top(f), neg, m, e, t, Nat.is_le(t, e))
+  round_go_near(Fmt.top(f), neg, m, e, t, Nat.is_le(t, e), {==})
