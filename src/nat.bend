@@ -96,6 +96,165 @@ def sub_le(a, k):
     case 1n++p 1n++q:
       le_trans(Nat.sub(p, q), p, 1n+p, sub_le(p, q), le_step(p))
 
+law add_zero_r:
+  for a: Nat
+  {a == Nat.add(a, 0n) : Nat}
+
+def add_zero_r(a):
+  match a:
+    case 0n:
+      {==}
+    case 1n+p:
+      %add_zero_r(p) : {1n+p == 1n+_ : Nat}
+      {==}
+
+law add_succ_r:
+  for a: Nat
+  for b: Nat
+  {Nat.add(a, 1n+b) == 1n+Nat.add(a, b) : Nat}
+
+def add_succ_r(a, b):
+  match a:
+    case 0n:
+      {==}
+    case 1n+p:
+      %add_succ_r(p, b) : {1n+Nat.add(p, 1n+b) == 1n+_ : Nat}
+      {==}
+
+law add_comm:
+  for +a: Nat
+  for +b: Nat
+  {Nat.add(a, b) == Nat.add(b, a) : Nat}
+
+def add_comm(a, b):
+  match a:
+    case 0n:
+      add_zero_r(b)
+    case 1n+p:
+      %Equal.sym(Nat, Nat.add(b, 1n+p), 1n+Nat.add(b, p), add_succ_r(b, p)) : {1n+Nat.add(p, b) == _ : Nat}
+      %add_comm(p, b) : {1n+Nat.add(p, b) == 1n+_ : Nat}
+      {==}
+
+law double_add:
+  for a: Nat
+  for +b: Nat
+  {Nat.add(Nat.double(a), Nat.double(b)) == Nat.double(Nat.add(a, b)) : Nat}
+
+def double_add(a, b):
+  match a:
+    case 0n:
+      {==}
+    case 1n+p:
+      %double_add(p, b) : {2n+Nat.add(Nat.double(p), Nat.double(b)) == 2n+_ : Nat}
+      {==}
+
+law le_add_r:
+  for a: Nat
+  for -b: Nat
+  LE(a, Nat.add(a, b))
+
+def le_add_r(a, b):
+  match a:
+    case 0n:
+      Unit{}
+    case 1n+p:
+      le_add_r(p, b)
+
+law le_add_l:
+  for a: Nat
+  for +b: Nat
+  LE(b, Nat.add(a, b))
+
+def le_add_l(a, b):
+  match a:
+    case 0n:
+      le_refl(b)
+    case 1n++p:
+      le_trans(b, Nat.add(p, b), 1n+Nat.add(p, b), le_add_l(p, b), le_step(Nat.add(p, b)))
+
+# adding the same number on the left keeps an order
+law add_mono_l:
+  for a: Nat
+  for b: Nat
+  for c: Nat
+  for h: LE(b, c)
+  LE(Nat.add(a, b), Nat.add(a, c))
+
+def add_mono_l(a, b, c, h):
+  match a:
+    case 0n:
+      h
+    case 1n+p:
+      add_mono_l(p, b, c, h)
+
+# adding the same number on the right keeps an order
+law add_mono_r:
+  for a: Nat
+  for b: Nat
+  for +c: Nat
+  for h: LE(a, b)
+  LE(Nat.add(a, c), Nat.add(b, c))
+
+def add_mono_r(a, b, c, h):
+  match a b:
+    case 0n y:
+      le_add_l(y, c)
+    case 1n+x 0n:
+      match h:
+    case 1n+x 1n+y:
+      add_mono_r(x, y, c, h)
+
+law double_mono:
+  for a: Nat
+  for b: Nat
+  for h: LE(a, b)
+  LE(Nat.double(a), Nat.double(b))
+
+def double_mono(a, b, h):
+  match a b:
+    case 0n y:
+      Unit{}
+    case 1n+x 0n:
+      match h:
+    case 1n+x 1n+y:
+      double_mono(x, y, h)
+
+law le_double:
+  for a: Nat
+  LE(a, Nat.double(a))
+
+def le_double(a):
+  match a:
+    case 0n:
+      Unit{}
+    case 1n++p:
+      le_trans(p, Nat.double(p), 1n+Nat.double(p), le_double(p), le_step(Nat.double(p)))
+
+law double_is_add:
+  for +a: Nat
+  {Nat.add(a, a) == Nat.double(a) : Nat}
+
+def double_is_add(a):
+  match a:
+    case 0n:
+      {==}
+    case 1n++p:
+      %Equal.sym(Nat, Nat.add(p, 1n+p), 1n+Nat.add(p, p), add_succ_r(p, p)) : {1n+_ == Nat.double(1n+p) : Nat}
+      %double_is_add(p) : {2n+Nat.add(p, p) == 2n+_ : Nat}
+      {==}
+
+law add_swap:
+  for +a: Nat
+  for +b: Nat
+  for +c: Nat
+  {Nat.add(a, Nat.add(b, c)) == Nat.add(b, Nat.add(a, c)) : Nat}
+
+def add_swap(a, b, c):
+  %Equal.sym(Nat, Nat.add(b, Nat.add(a, c)), Nat.add(Nat.add(b, a), c), add_assoc(b, a, c)) : {Nat.add(a, Nat.add(b, c)) == _ : Nat}
+  %Equal.sym(Nat, Nat.add(a, Nat.add(b, c)), Nat.add(Nat.add(a, b), c), add_assoc(a, b, c)) : {_ == Nat.add(Nat.add(b, a), c) : Nat}
+  %add_comm(a, b) : {Nat.add(Nat.add(a, b), c) == Nat.add(_, c) : Nat}
+  {==}
+
 # Compares a and b and returns the proof of the side that holds.
 def le_case(a: Nat, b: Nat) -> Or(LE(a, b), LE(b, a)):
   match a b:
