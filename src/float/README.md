@@ -1,5 +1,25 @@
 # float: laws about float code
 
+Physics code rarely crashes. It goes wrong quietly: one NaN from a
+0/0, one float turned into an out-of-range index, one GPU that rounds
+differently. Then the ball leaves the arena, a replay desyncs, or the
+simulation drifts, and no test happened to hit that input. These
+modules let the checker prove laws about float code **for every
+input**, so those bugs are rejected at build time. Each row below is a
+real case from this repo: a bug the checker rejected, or a hardware
+difference a test measured.
+
+| failure | what the player sees | what catches it |
+|---|---|---|
+| NaN or ±∞ reaches a position (mouse input, a 0/0) | the paddle or ball leaves the arena | `arena_run` ([breakout](../../apps/breakout.bend)): for every input list, NaN included, both stay inside. Remove one clamp and the checker rejects the game. |
+| a bounce that isn't exactly a sign flip (`-v * 1.01`) | the ball gains energy and speeds up | `speed_run`: the speed never changes, bit for bit. The 1.01 bounce is rejected. |
+| `F32.to_u32` on a NaN or negative float | undefined in C, so native and JS builds disagree: replays and lockstep multiplayer desync | `cell_ok` ([fluid](../../apps/fluid.bend)): every index is in [0, 95] and every weight in [0, 1], for every float. |
+| an error tolerance that is too tight | drift goes past the tolerance without a sound | `hard_step_near` ([drift](../../examples/drift.bend)): one Euler step is within ulp(x′)/2 + ulp(v·dt)/2 of exact. Drop the second term and 122 of 3000 hardware steps break the bound. |
+| a solver change that stops converging | the fluid blows up | `projection` (fluid): the checker runs 20 pressure sweeps on a 4×4 grid and confirms divergence falls from 2.4 to 2.25e-6, bit for bit. |
+| hardware that isn't quite IEEE | a law that holds on the CPU is false on the GPU | each law names what it assumes (`LtOk`, `NegOk`, `HardOk`), and those assumptions are tested on each lane. The JS lane drops a NaN's sign, so `NegOk` leaves NaNs out. The Metal GPU flushes subnormals to zero, so the clamp laws don't hold inside `!` GPU code ([notes](../../notes/metal_floats.md)). |
+
+## How it works
+
 Bend's Base leaves every `F32` operation as an unfilled law, so the
 checker cannot compute `F32.add(0.1, 0.2)` or say anything about code
 that uses floats. A float is also `F32{Word(32n)}`, its 32 bits, and

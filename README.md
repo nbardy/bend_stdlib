@@ -4,6 +4,10 @@ Data structures and laws for [Bend](https://github.com/HigherOrderCO/Bend).
 Laws are checked at build time and erased at run time. Design rules are
 in [PHILOSOPHY.md](PHILOSOPHY.md).
 
+For physics and game code: laws that rule out the NaN, desync and drift
+bugs float code ships with, for every input. See
+[src/float/README.md](src/float/README.md).
+
 ```python
 import Base
 import bend-lawful-stdlib@0.1.0.0/src/nat.bend as Nat
