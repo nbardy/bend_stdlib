@@ -2,6 +2,8 @@ import Base
 import ../nat.bend as Nat
 import ./bin.bend as Bin
 import ./format.bend as Fmt
+import ./num.bend as Num
+import ./sf32.bend as SF32
 
 # error.bend: how far a rounded result is from the exact one.
 #
@@ -594,9 +596,9 @@ def fin_near(q, r, s, M, k, T):
 # operations add up.
 
 # a rounded value v of the exact X: a finite v is within half its own ulp
-# (2^t, t its exponent) of X; zero is within half of 2^u, the ulp of the
-# smallest value it was rounded from; infinity (overflow) carries no
-# bound; rounding never gives NaN
+# (2^t, t its exponent) of X, and its mantissa is not zero; zero is
+# within half of 2^u, the ulp of the smallest value it was rounded from;
+# infinity (overflow) carries no bound; rounding never gives NaN
 def Near(v: Fmt.Val, +X: Nat, +u: Nat) -> Type:
   match v:
     case Fmt.Z{n}:
@@ -605,8 +607,8 @@ def Near(v: Fmt.Val, +X: Nat, +u: Nat) -> Type:
       Unit
     case Fmt.NaN{}:
       Empty
-    case Fmt.Fin{n, R, +t}:
-      Bound(sh(Bin.to_nat(R), t), X, t)
+    case Fmt.Fin{n, +R, +t}:
+      Bound(sh(Bin.to_nat(R), t), X, t) & Nat.IsFalse(Bin.is_zero(R))
 
 def no_f(e: {False{} == True{} : Bool}) -> Empty:
   %e : Nat.IsFalse(_)
@@ -653,6 +655,15 @@ def sh_num_zero(R, s, ez):
     Equal.cong(Nat, Nat, x => sh(x, s), Bin.to_nat(R), 0n, Equal.sym(Nat, 0n, Bin.to_nat(R), zero_num(R)(ez))),
     Equal.sym(Nat, 0n, sh(0n, s), sh_zero(s)))
 
+law nonzero:
+  for +R: Bin.Bin
+  for ez: {Bin.is_zero(R) == False{} : Bool}
+  Nat.IsFalse(Bin.is_zero(R))
+
+def nonzero(R, ez):
+  %Equal.sym(Bool, Bin.is_zero(R), False{}, ez) : Nat.IsFalse(_)
+  Unit{}
+
 law over_near.go:
   for neg: Bool
   for +R: Bin.Bin
@@ -673,7 +684,7 @@ def over_near.go(neg, R, t, X, u, z, ez, big, bf, zf):
     case False{} True{}:
       Unit{}
     case False{} False{}:
-      bf
+      (bf, nonzero(R, ez))
 
 # over keeps a bound: zero if the mantissa is zero, infinity if too big
 law over_near:
@@ -1253,3 +1264,181 @@ law add_near:
 
 def add_near(f, n, ma, ea, mb, eb):
   add_near.go(f, n, ma, ea, mb, eb, Nat.is_ge(ea, eb), {==})
+
+# Canonical form
+# --------------
+# Num.Correct compares results through Fmt.canon, which moves a
+# mantissa's trailing zeros into the exponent. That keeps the value and
+# can only grow a finite result's own ulp, so it keeps the bound.
+
+# a bound for an ulp stays a bound for twice that ulp
+law bound_up.step:
+  for +A: Nat
+  for +B: Nat
+  for +U: Nat
+  for h: Nat.LE(A, Nat.add(B, U))
+  Nat.LE(A, Nat.add(B, Nat.double(U)))
+
+def bound_up.step(A, B, U, h):
+  Nat.le_trans(A, Nat.add(B, U), Nat.add(B, Nat.double(U)), h, Nat.add_mono_l(B, U, Nat.double(U), Nat.le_double(U)))
+
+law bound_up:
+  for +Y: Nat
+  for +X: Nat
+  for +k: Nat
+  for b: Bound(Y, X, k)
+  Bound(Y, X, 1n+k)
+
+def bound_up(Y, X, k, b):
+  (l, r) = b
+  (bound_up.step(Nat.double(Y), Nat.double(X), sh(1n, k), l), bound_up.step(Nat.double(X), Nat.double(Y), sh(1n, k), r))
+
+law cons0_num:
+  for x: Bin.Bin
+  {Bin.to_nat(Bin.trim.cons0(x)) == Nat.double(Bin.to_nat(x)) : Nat}
+
+def cons0_num(x):
+  match x:
+    case Bin.BZ{}:
+      {==}
+    case Bin.B0{y}:
+      {==}
+    case Bin.B1{y}:
+      {==}
+
+# trimming high zero bits keeps the number
+law trim_num:
+  for a: Bin.Bin
+  {Bin.to_nat(Bin.trim(a)) == Bin.to_nat(a) : Nat}
+
+def trim_num(a):
+  match a:
+    case Bin.BZ{}:
+      {==}
+    case Bin.B0{+r}:
+      %Equal.sym(Nat, Bin.to_nat(Bin.trim.cons0(Bin.trim(r))), Nat.double(Bin.to_nat(Bin.trim(r))), cons0_num(Bin.trim(r))) : {_ == Nat.double(Bin.to_nat(r)) : Nat}
+      %Equal.sym(Nat, Bin.to_nat(Bin.trim(r)), Bin.to_nat(r), trim_num(r)) : {Nat.double(_) == Nat.double(Bin.to_nat(r)) : Nat}
+      {==}
+    case Bin.B1{+r}:
+      %Equal.sym(Nat, Bin.to_nat(Bin.trim(r)), Bin.to_nat(r), trim_num(r)) : {1n+Nat.double(_) == 1n+Nat.double(Bin.to_nat(r)) : Nat}
+      {==}
+
+law strip_b0:
+  for +r: Bin.Bin
+  for +t: Nat
+  for +X: Nat
+  for b: Bound(sh(Nat.double(Bin.to_nat(r)), t), X, t)
+  Bound(sh(Bin.to_nat(r), 1n+t), X, 1n+t)
+
+def strip_b0(r, t, X, b):
+  %Equal.sym(Nat, Nat.double(sh(Bin.to_nat(r), t)), sh(Nat.double(Bin.to_nat(r)), t), sh_double(Bin.to_nat(r), t)) : Bound(_, X, 1n+t)
+  bound_up(sh(Nat.double(Bin.to_nat(r)), t), X, t, b)
+
+law strip_b1:
+  for +r: Bin.Bin
+  for +t: Nat
+  for +X: Nat
+  for b: Bound(sh(1n+Nat.double(Bin.to_nat(r)), t), X, t)
+  Bound(sh(1n+Nat.double(Bin.to_nat(Bin.trim(r))), t), X, t)
+
+def strip_b1(r, t, X, b):
+  %Equal.sym(Nat, Bin.to_nat(Bin.trim(r)), Bin.to_nat(r), trim_num(r)) : Bound(sh(1n+Nat.double(_), t), X, t)
+  b
+
+law strip_near:
+  for neg: Bool
+  for m: Bin.Bin
+  for +t: Nat
+  for +X: Nat
+  for +u: Nat
+  Bound(sh(Bin.to_nat(m), t), X, t) -> Nat.IsFalse(Bin.is_zero(m)) -> Near(Fmt.strip(neg, m, t), X, u)
+
+def strip_near(neg, m, t, X, u):
+  match m:
+    case Bin.BZ{}:
+      b => nz => void(Bound(0n, X, u), nz)
+    case Bin.B0{+r}:
+      b => nz => strip_near(neg, r, 1n+t, X, u)(strip_b0(r, t, X, b))(nz)
+    case Bin.B1{+r}:
+      b => nz => (strip_b1(r, t, X, b), Unit{})
+
+law canon_fin:
+  for n: Bool
+  for +m: Bin.Bin
+  for +t: Nat
+  for +X: Nat
+  for +u: Nat
+  for h: Bound(sh(Bin.to_nat(m), t), X, t) & Nat.IsFalse(Bin.is_zero(m))
+  Near(Fmt.strip(n, m, t), X, u)
+
+def canon_fin(n, m, t, X, u, h):
+  (b, nz) = h
+  strip_near(n, m, t, X, u)(b)(nz)
+
+# the canonical form of a rounded value keeps its bound
+law canon_near:
+  for v: Fmt.Val
+  for +X: Nat
+  for +u: Nat
+  Near(v, X, u) -> Near(Fmt.canon(v), X, u)
+
+def canon_near(v, X, u):
+  match v:
+    case Fmt.Z{n}:
+      h => h
+    case Fmt.Inf{n}:
+      h => h
+    case Fmt.NaN{}:
+      h => h
+    case Fmt.Fin{n, +m, +t}:
+      h => canon_fin(n, m, t, X, u, h)
+
+# Hardware
+# --------
+# Under SF32.HardOk (the hardware's F32.add and F32.mul round correctly),
+# the bounds hold for Base's own operations: the hardware result, in
+# canonical form, is within half its own ulp of the exact result.
+
+law hard_mul_near:
+  for ~ok: SF32.HardOk()
+  for +a: F32
+  for +b: F32
+  for +na: Bool
+  for +ma: Bin.Bin
+  for +ea: Nat
+  for +nb: Bool
+  for +mb: Bin.Bin
+  for +eb: Nat
+  for da: {SF32.decode(a) == Fmt.Fin{na, ma, ea} : Fmt.Val}
+  for db: {SF32.decode(b) == Fmt.Fin{nb, mb, eb} : Fmt.Val}
+  Near(Fmt.canon(SF32.decode(F32.mul(a, b))), sh(Nat.mul(Bin.to_nat(ma), Bin.to_nat(mb)), mul_exp(ea, eb)), Fmt.lsb(Fmt.binary32(), Bin.mul(ma, mb), mul_exp(ea, eb)))
+
+def hard_mul_near(ok, a, b, na, ma, ea, nb, mb, eb, da, db):
+  +X = sh(Nat.mul(Bin.to_nat(ma), Bin.to_nat(mb)), mul_exp(ea, eb))
+  +u = Fmt.lsb(Fmt.binary32(), Bin.mul(ma, mb), mul_exp(ea, eb))
+  %Equal.sym(Fmt.Val, Fmt.canon(SF32.decode(F32.mul(a, b))), Fmt.canon(Fmt.spec_mul(Fmt.binary32(), SF32.decode(a), SF32.decode(b))), Num.Correct.mul(F32, SF32.hard(), ok, a, b)) : Near(_, X, u)
+  %Equal.sym(Fmt.Val, SF32.decode(a), Fmt.Fin{na, ma, ea}, da) : Near(Fmt.canon(Fmt.spec_mul(Fmt.binary32(), _, SF32.decode(b))), X, u)
+  %Equal.sym(Fmt.Val, SF32.decode(b), Fmt.Fin{nb, mb, eb}, db) : Near(Fmt.canon(Fmt.spec_mul(Fmt.binary32(), Fmt.Fin{na, ma, ea}, _)), X, u)
+  canon_near(Fmt.spec_mul(Fmt.binary32(), Fmt.Fin{na, ma, ea}, Fmt.Fin{nb, mb, eb}), X, u)(mul_near(Fmt.binary32(), na, ma, ea, nb, mb, eb))
+
+law hard_add_near:
+  for ~ok: SF32.HardOk()
+  for +a: F32
+  for +b: F32
+  for +n: Bool
+  for +ma: Bin.Bin
+  for +ea: Nat
+  for +mb: Bin.Bin
+  for +eb: Nat
+  for da: {SF32.decode(a) == Fmt.Fin{n, ma, ea} : Fmt.Val}
+  for db: {SF32.decode(b) == Fmt.Fin{n, mb, eb} : Fmt.Val}
+  Near(Fmt.canon(SF32.decode(F32.add(a, b))), Nat.add(sh(Bin.to_nat(ma), ea), sh(Bin.to_nat(mb), eb)), sum_lsb(Fmt.binary32(), ma, ea, mb, eb))
+
+def hard_add_near(ok, a, b, n, ma, ea, mb, eb, da, db):
+  +X = Nat.add(sh(Bin.to_nat(ma), ea), sh(Bin.to_nat(mb), eb))
+  +u = sum_lsb(Fmt.binary32(), ma, ea, mb, eb)
+  %Equal.sym(Fmt.Val, Fmt.canon(SF32.decode(F32.add(a, b))), Fmt.canon(Fmt.spec_add(Fmt.binary32(), SF32.decode(a), SF32.decode(b))), Num.Correct.add(F32, SF32.hard(), ok, a, b)) : Near(_, X, u)
+  %Equal.sym(Fmt.Val, SF32.decode(a), Fmt.Fin{n, ma, ea}, da) : Near(Fmt.canon(Fmt.spec_add(Fmt.binary32(), _, SF32.decode(b))), X, u)
+  %Equal.sym(Fmt.Val, SF32.decode(b), Fmt.Fin{n, mb, eb}, db) : Near(Fmt.canon(Fmt.spec_add(Fmt.binary32(), Fmt.Fin{n, ma, ea}, _)), X, u)
+  canon_near(Fmt.spec_add(Fmt.binary32(), Fmt.Fin{n, ma, ea}, Fmt.Fin{n, mb, eb}), X, u)(add_near(Fmt.binary32(), n, ma, ea, mb, eb))
+
