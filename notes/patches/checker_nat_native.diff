@@ -1,87 +1,72 @@
 diff --git a/bend2/bend.ts b/bend2/bend.ts
-index 7cb32488..da08eadb 100644
+index 7cb32488..d196c356 100644
 --- a/bend2/bend.ts
 +++ b/bend2/bend.ts
-@@ -2913,6 +2913,50 @@ export function body_flatten(b: Body, vars: PVar[], fr: () => number): LTerm {
+@@ -2913,6 +2913,24 @@ export function body_flatten(b: Body, vars: PVar[], fr: () => number): LTerm {
  // a rewrite demands its evidence and steps to its body on {==}, else
  // sticks as a value.
  
-+// Base's Nat operations on two closed numbers are computed natively, as
-+// the compiler does, instead of unfolding one Succ per unit. Only closed
-+// arguments are forced: forcing a symbolic one caches its unfolded form,
-+// and an induction over it then never ends (tests/proof/shift_left_mask).
-+const NAT_OPS: Record<Name, (a: number, b: number) => number | "LT" | "EQ" | "GT"> = {
-+  "Nat.add": (a, b) => a + b, "Nat.sub": (a, b) => Math.max(a - b, 0), "Nat.mul": (a, b) => a * b,
-+  "Nat.min": (a, b) => Math.min(a, b), "Nat.max": (a, b) => Math.max(a, b),
-+  "Nat.cmp": (a, b) => a < b ? "LT" : a === b ? "EQ" : "GT",
++// Base's Nat.add, sub, max and cmp on two numbers are computed natively,
++// as the compiler does, instead of unfolding one Succ per unit
++const NAT_OPS: Record<Name, (a: number, b: number, s?: Span) => HTerm | null> = {
++  "Nat.add": (a, b, s) => Number.isSafeInteger(a + b) ? Lit("Nat", a + b, s) : null,
++  "Nat.sub": (a, b, s) => Lit("Nat", Math.max(a - b, 0), s),
++  "Nat.max": (a, b, s) => Lit("Nat", Math.max(a, b), s),
++  "Nat.cmp": (a, b, s) => Ctr(a < b ? "LT" : a > b ? "GT" : "EQ", [], s),
 +};
 +
-+const CLOSED = new WeakMap<HTerm, boolean>();
-+function closed(t: HTerm): boolean {
-+  let r = CLOSED.get(t);
-+  if (r === undefined) {
-+    r = t.$ === "Ref" || t.$ === "Lit" || (t.$ === "Var" && t.v !== undefined && closed(t.v))
-+      || (t.$ === "App" && closed(t.f) && closed(t.x)) || (t.$ === "Ctr" && t.x.every(closed));
-+    CLOSED.set(t, r);
-+  }
-+  return r;
-+}
-+
-+// the number a closed Nat term normalizes to: Succs over a literal or Zero
-+function nat_of(book: Book, t: HTerm): number | null {
-+  let k = 0;
-+  for (t = term_wnf(book, t); t.$ === "Ctr" && t.k === "Succ"; t = term_wnf(book, t.x[0])) {
-+    k += 1;
++// the number an argument frame holds, if it is Succs over a literal or Zero
++function nat_of(book: Book, fr: Frame, k = 0): number | null {
++  let t = term_wnf(book, (fr as Extract<Frame, { $: "APP" }>).x);
++  for (; t.$ === "Ctr" && t.k === "Succ"; k += 1) {
++    t = term_wnf(book, t.x[0]);
 +  }
 +  return t.$ === "Lit" && t.k === "Nat" ? t.v + k : t.$ === "Ctr" && t.k === "Zero" ? k : null;
-+}
-+
-+// k applied to the two APP frames on top of frs, when k is in NAT_OPS
-+function nat_fast(book: Book, k: Name, frs: Frame[], s?: Span): HTerm | null {
-+  const op = NAT_OPS[k];
-+  const x = frs[frs.length - 1] as Extract<Frame, { $: "APP" }>;
-+  const y = frs[frs.length - 2] as Extract<Frame, { $: "APP" }>;
-+  if (op === undefined || !closed(x.x) || !closed(y.x)) {
-+    return null;
-+  }
-+  const a = nat_of(book, x.x);
-+  const b = a === null ? null : nat_of(book, y.x);
-+  const r = a === null || b === null ? null : op(a, b);
-+  return typeof r === "string" ? Ctr(r, [], s) : r !== null && Number.isSafeInteger(r) ? Lit("Nat", r, s) : null;
 +}
 +
  export function term_wnf(book: Book, term: HTerm): HTerm {
    const frs: Frame[] = [];
    let tm: HTerm = term;
-@@ -3010,6 +3054,8 @@ export function term_wnf(book: Book, term: HTerm): HTerm {
+@@ -3010,6 +3028,11 @@ export function term_wnf(book: Book, term: HTerm): HTerm {
          if (run < tld.n || tld.v === null) {
            break focus;
          }
-+        const nat = tld.b ? nat_fast(book, tm.k, frs, tm.s) : null;
++        const op = tld.b ? NAT_OPS[tm.k] : undefined;
++        const a = op ? nat_of(book, frs[frs.length - 1]) : null;
++        const b = a !== null ? nat_of(book, frs[frs.length - 2]) : null;
++        const nat = b !== null ? op!(a!, b, tm.s) : null;
 +        if (nat !== null) { frs.length -= 2; tm = nat; continue main; }
          const rf: HTerm = tm;
          lhs = { t: () => rf, n: tld.n };
          tm = tld.v;
 diff --git a/tests/check/nat_closed_ops.bend b/tests/check/nat_closed_ops.bend
 new file mode 100644
-index 00000000..fe8766bd
+index 00000000..303b0986
 --- /dev/null
 +++ b/tests/check/nat_closed_ops.bend
-@@ -0,0 +1,24 @@
-+# Base's Nat operations on closed numbers compute as numbers, not one
-+# Succ at a time; a symbolic argument still unfolds
+@@ -0,0 +1,32 @@
++# Base's Nat operations give the same results on closed numbers, which
++# the checker may compute natively, and on a symbolic argument, which
++# still unfolds
 +import Base
 +
-+law big:
-+  {Nat.cmp(Nat.mul(3000n, 3000n), Nat.add(8999999n, Nat.sub(5n, 9n))) == GT{} : Cmp}
++law ops:
++  {(Nat.add(20n, 22n), Nat.sub(9n, 4n), Nat.sub(4n, 9n), Nat.max(3n, 7n)) == (42n, 5n, 0n, 7n) : Nat & Nat & Nat & Nat}
 +
-+def big():
++def ops():
 +  {==}
 +
-+law min_max:
-+  {Nat.add(Nat.min(70000n, 90000n), Nat.max(70000n, 90000n)) == 160000n : Nat}
++law cmps:
++  {(Nat.cmp(2n, 5n), Nat.cmp(5n, 5n), Nat.cmp(7n, 5n)) == (LT{}, EQ{}, GT{}) : Cmp & Cmp & Cmp}
 +
-+def min_max():
++def cmps():
++  {==}
++
++# a successor on top of a computed number
++law mixed:
++  {Nat.add(1n+Nat.add(1n, 2n), 3n) == 7n : Nat}
++
++def mixed():
 +  {==}
 +
 +law open:
