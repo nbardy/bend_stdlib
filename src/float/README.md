@@ -3,7 +3,8 @@
 Bend's Base leaves every `F32` operation as an unfilled law, so the
 checker cannot compute `F32.add(0.1, 0.2)` or say anything about code
 that uses floats. A float is also `F32{Word(32n)}`, its 32 bits, and
-functions of the bits do compute. This folder uses that in two ways:
+functions of the bits do compute. This folder (`import bend-lawful-stdlib@0.1.0.0/src/float/f32.bend as
+F32`) uses that in two ways:
 
 1. **Exact operations, specified on the bits.** Comparison and negation
    are exact in IEEE 754. `f32.bend` defines them on the bits and proves

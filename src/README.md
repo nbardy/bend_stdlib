@@ -1,7 +1,8 @@
 # Modules
 
 Each file is one topic, with its laws next to its definitions. Import a
-module by path, under the name shown; a module that extends a Base type
+module from the hub (`import bend-lawful-stdlib@0.1.0.0/src/nat.bend as
+Nat`) or by path, under the name shown; a module that extends a Base type
 takes that type's name (`nat.bend as Nat`), so `Nat.add` is still
 Base's and `Nat.le_trans` is this library's. Every module is used by at
 least one example or app, linked below; `./gate.sh` checks and runs

@@ -6,7 +6,7 @@ Opened 2026-09-24 as <https://github.com/bendlang/bend/issues/1017>.
 
 **Title:** Laws about F32 code: make float operations computable in the checker
 
-Body as edited 2026-09-24 (examples added):
+Body as edited 2026-09-25 (examples, hub import):
 
 ### What Bend should do
 
@@ -28,6 +28,8 @@ checker. A library uses that without any Base change:
 <https://github.com/nbardy/bend_stdlib/tree/main/src/float>
 (guide: [src/float/README.md](https://github.com/nbardy/bend_stdlib/blob/main/src/float/README.md)).
 The hardware enters only as a named hypothesis, passed as a `~` argument.
+It is on the hub, so trying it is one line:
+`import bend-lawful-stdlib@0.1.0.0/src/float/f32.bend as F32`.
 
 **Laws about game code.** [`apps/breakout.bend`](https://github.com/nbardy/bend_stdlib/blob/main/apps/breakout.bend)
 keeps its paddle and ball in `F32` and moves them with Base's
@@ -101,3 +103,4 @@ Is this something you want in Base, somewhere else, or left to
 libraries? The library works as it is either way.
 
 (Written with AI assistance; I read and approved it.)
+

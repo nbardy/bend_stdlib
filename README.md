@@ -76,7 +76,7 @@ The float laws assume only that the hardware's `<` and negation are
 IEEE 754's (`F32.LtOk()`, `F32.NegOk()`), passed as `~` arguments.
 
 The gate also checks each module on its own and that no name shadows
-Base. It passes on Bend 2.0.20 and 2.0.26.
+Base. It passes on Bend 2.0.20, 2.0.26 and 2.0.27.
 
 ## Modules
 
