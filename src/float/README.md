@@ -54,6 +54,22 @@ undefined in C for NaN, negative or huge values, and then the C and JS
 lanes disagree. `cell` clamps the index and the interpolation weight,
 and `cell_ok` proves both are in range for every float.
 
+The same app shows the software floats earning their keep. Its
+projection kernels take their float operations as a template argument
+(`~o: Ops`): `hard()` is the machine's `F32`, `soft()` is `SF32`. The
+app runs `project(~hard(), 31n, 20n, a)` on its 32x32 grid; the checker
+runs the same `project` with `soft()` on a 4x4 fixture and closes
+
+```python
+law projection:
+  {summary(checked(~soft())) == Summary{Bits3{1073741824, 1075419546, 907468800}, True{}} : Summary}
+```
+
+by `{==}`: 20 Jacobi sweeps take the total |divergence| from 2.4 to
+1.1796875 * 2^-19, bit for bit (the `True{}` is "it went down").
+`main` runs the fixture on `hard()` too and prints whether the bits
+agree, which carries the law to the machine by test.
+
 From [`examples/sf32.bend`](../../examples/sf32.bend): facts about
 rounded arithmetic, closed by the checker:
 

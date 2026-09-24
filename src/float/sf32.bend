@@ -148,3 +148,7 @@ def hard() -> Num.Impl<F32>:
 # the hardware assumption: Base's F32.add and F32.mul are correctly rounded
 def HardOk() -> Type:
   Num.Correct<F32, hard()>
+
+# |x|: the sign bit cleared. Exact, like negation.
+def abs(x: F32) -> F32:
+  of_bits(U32.and(bits(x), 2147483647)) # 0x7FFFFFFF

@@ -145,7 +145,9 @@ is the graded-monad idea written with types the checker already has.
   differential test found this).
 - Used by `apps/breakout.bend` (the ball and paddle stay in the arena
   for every input, NaN included; the ball's speed never changes) and
-  `apps/fluid.bend` (every float converted to an index is in range).
+  `apps/fluid.bend` (every float converted to an index is in range;
+  the app's projection, computed by the checker in software floats on a
+  4x4 fixture, lowers the divergence, with the exact bits stated).
 - Upstream: bendlang/bend#1017 proposes structural F32 in Base.
 - `src/float/error.bend`: layer 4 for single operations. `Fmt.round` is
   within half its own ulp of the exact value (`round_near`), proven by
