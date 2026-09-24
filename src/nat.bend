@@ -255,6 +255,18 @@ def add_swap(a, b, c):
   %add_comm(a, b) : {Nat.add(Nat.add(a, b), c) == Nat.add(_, c) : Nat}
   {==}
 
+law add_right_comm:
+  for +a: Nat
+  for +b: Nat
+  for +c: Nat
+  {Nat.add(Nat.add(a, b), c) == Nat.add(Nat.add(a, c), b) : Nat}
+
+def add_right_comm(a, b, c):
+  %add_assoc(a, b, c) : {_ == Nat.add(Nat.add(a, c), b) : Nat}
+  %add_assoc(a, c, b) : {Nat.add(a, Nat.add(b, c)) == _ : Nat}
+  %add_comm(b, c) : {Nat.add(a, Nat.add(b, c)) == Nat.add(a, _) : Nat}
+  {==}
+
 # Compares a and b and returns the proof of the side that holds.
 def le_case(a: Nat, b: Nat) -> Or(LE(a, b), LE(b, a)):
   match a b:

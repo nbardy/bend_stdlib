@@ -1442,3 +1442,256 @@ def hard_add_near(ok, a, b, n, ma, ea, mb, eb, da, db):
   %Equal.sym(Fmt.Val, SF32.decode(b), Fmt.Fin{n, mb, eb}, db) : Near(Fmt.canon(Fmt.spec_add(Fmt.binary32(), Fmt.Fin{n, ma, ea}, _)), X, u)
   canon_near(Fmt.spec_add(Fmt.binary32(), Fmt.Fin{n, ma, ea}, Fmt.Fin{n, mb, eb}), X, u)(add_near(Fmt.binary32(), n, ma, ea, mb, eb))
 
+
+# A physics step
+# --------------
+# x' = x + v * dt rounds twice: the product, then the sum. The sum is
+# within half its ulp of x + p, p within half its ulp of v * dt, so x' is
+# within half of ulp(x') + ulp(p) of the exact x + v * dt.
+
+# the exponent of the canonical form of m at t: its ulp; u if m is zero
+def ulp_of(m: Bin.Bin, +t: Nat, u: Nat) -> Nat:
+  match m:
+    case Bin.BZ{}:
+      u
+    case Bin.B0{r}:
+      ulp_of(r, 1n+t, u)
+    case Bin.B1{r}:
+      t
+
+law strip_val.z:
+  for +t: Nat
+  for +X: Nat
+  for +u: Nat
+  for h: Bound(0n, X, u)
+  Bound(sh(0n, t), X, u)
+
+def strip_val.z(t, X, u, h):
+  %sh_zero(t) : Bound(_, X, u)
+  h
+
+law strip_val.b0:
+  for +r: Bin.Bin
+  for +t: Nat
+  for +X: Nat
+  for +W: Nat
+  for h: Bound(sh(Bin.to_nat(r), 1n+t), X, W)
+  Bound(sh(Nat.double(Bin.to_nat(r)), t), X, W)
+
+def strip_val.b0(r, t, X, W, h):
+  %sh_double(Bin.to_nat(r), t) : Bound(_, X, W)
+  h
+
+law strip_val.b1:
+  for +r: Bin.Bin
+  for +t: Nat
+  for +X: Nat
+  for h: Bound(sh(1n+Nat.double(Bin.to_nat(Bin.trim(r))), t), X, t) & Nat.IsFalse(Bin.is_zero(Bin.B1{Bin.trim(r)}))
+  Bound(sh(1n+Nat.double(Bin.to_nat(r)), t), X, t)
+
+def strip_val.b1(r, t, X, h):
+  (b, nz) = h
+  %trim_num(r) : Bound(sh(1n+Nat.double(_), t), X, t)
+  b
+
+# the canonical form's bound is a bound on the value it came from, at the
+# canonical form's ulp
+law strip_val:
+  for n: Bool
+  for m: Bin.Bin
+  for +t: Nat
+  for +X: Nat
+  for +u: Nat
+  Near(Fmt.strip(n, m, t), X, u) -> Bound(sh(Bin.to_nat(m), t), X, ulp_of(m, t, u))
+
+def strip_val(n, m, t, X, u):
+  match m:
+    case Bin.BZ{}:
+      h => strip_val.z(t, X, u, h)
+    case Bin.B0{+r}:
+      h => strip_val.b0(r, t, X, ulp_of(r, 1n+t, u), strip_val(n, r, 1n+t, X, u)(h))
+    case Bin.B1{+r}:
+      h => strip_val.b1(r, t, X, h)
+
+# 2|Y - X| <= 2^k + 2^w
+def Bound2(+Y: Nat, +X: Nat, +k: Nat, +w: Nat) -> Type:
+  Nat.LE(Nat.double(Y), Nat.add(Nat.add(Nat.double(X), sh(1n, k)), sh(1n, w))) & Nat.LE(Nat.double(X), Nat.add(Nat.add(Nat.double(Y), sh(1n, k)), sh(1n, w)))
+
+law compose.lo.m:
+  for +A: Nat
+  for +P: Nat
+  for +Pe: Nat
+  for +W: Nat
+  for h2: Nat.LE(Nat.double(P), Nat.add(Nat.double(Pe), W))
+  Nat.LE(Nat.double(Nat.add(A, P)), Nat.add(Nat.double(A), Nat.add(Nat.double(Pe), W)))
+
+def compose.lo.m(A, P, Pe, W, h2):
+  %Nat.double_add(A, P) : Nat.LE(_, Nat.add(Nat.double(A), Nat.add(Nat.double(Pe), W)))
+  Nat.add_mono_l(Nat.double(A), Nat.double(P), Nat.add(Nat.double(Pe), W), h2)
+
+law compose.lo:
+  for +Y: Nat
+  for +A: Nat
+  for +P: Nat
+  for +Pe: Nat
+  for +K: Nat
+  for +W: Nat
+  for h1: Nat.LE(Nat.double(Y), Nat.add(Nat.double(Nat.add(A, P)), K))
+  for h2: Nat.LE(Nat.double(P), Nat.add(Nat.double(Pe), W))
+  Nat.LE(Nat.double(Y), Nat.add(Nat.add(Nat.double(Nat.add(A, Pe)), K), W))
+
+def compose.lo(Y, A, P, Pe, K, W, h1, h2):
+  +dA = Nat.double(A)
+  +dPe = Nat.double(Pe)
+  %Nat.double_add(A, Pe) : Nat.LE(Nat.double(Y), Nat.add(Nat.add(_, K), W))
+  %Nat.add_right_comm(Nat.add(dA, dPe), W, K) : Nat.LE(Nat.double(Y), _)
+  %Nat.add_assoc(dA, dPe, W) : Nat.LE(Nat.double(Y), Nat.add(_, K))
+  Nat.le_trans(Nat.double(Y), Nat.add(Nat.double(Nat.add(A, P)), K), Nat.add(Nat.add(dA, Nat.add(dPe, W)), K), h1,
+    Nat.add_mono_r(Nat.double(Nat.add(A, P)), Nat.add(dA, Nat.add(dPe, W)), K, compose.lo.m(A, P, Pe, W, h2)))
+
+law compose.hi.m:
+  for +A: Nat
+  for +P: Nat
+  for +W: Nat
+  for +Z: Nat
+  for h1: Nat.LE(Nat.double(Nat.add(A, P)), Z)
+  Nat.LE(Nat.add(Nat.double(A), Nat.add(Nat.double(P), W)), Nat.add(Z, W))
+
+def compose.hi.m(A, P, W, Z, h1):
+  %Equal.sym(Nat, Nat.add(Nat.double(A), Nat.add(Nat.double(P), W)), Nat.add(Nat.add(Nat.double(A), Nat.double(P)), W), Nat.add_assoc(Nat.double(A), Nat.double(P), W)) : Nat.LE(_, Nat.add(Z, W))
+  %Equal.sym(Nat, Nat.add(Nat.double(A), Nat.double(P)), Nat.double(Nat.add(A, P)), Nat.double_add(A, P)) : Nat.LE(Nat.add(_, W), Nat.add(Z, W))
+  Nat.add_mono_r(Nat.double(Nat.add(A, P)), Z, W, h1)
+
+law compose.hi:
+  for +Y: Nat
+  for +A: Nat
+  for +P: Nat
+  for +Pe: Nat
+  for +K: Nat
+  for +W: Nat
+  for h1: Nat.LE(Nat.double(Nat.add(A, P)), Nat.add(Nat.double(Y), K))
+  for h2: Nat.LE(Nat.double(Pe), Nat.add(Nat.double(P), W))
+  Nat.LE(Nat.double(Nat.add(A, Pe)), Nat.add(Nat.add(Nat.double(Y), K), W))
+
+def compose.hi(Y, A, P, Pe, K, W, h1, h2):
+  +dA = Nat.double(A)
+  %Nat.double_add(A, Pe) : Nat.LE(_, Nat.add(Nat.add(Nat.double(Y), K), W))
+  Nat.le_trans(Nat.add(dA, Nat.double(Pe)), Nat.add(dA, Nat.add(Nat.double(P), W)), Nat.add(Nat.add(Nat.double(Y), K), W),
+    Nat.add_mono_l(dA, Nat.double(Pe), Nat.add(Nat.double(P), W), h2),
+    compose.hi.m(A, P, W, Nat.add(Nat.double(Y), K), h1))
+
+# Y near A + P, and P near Pe: Y near A + Pe, with both ulps
+law compose:
+  for +Y: Nat
+  for +A: Nat
+  for +P: Nat
+  for +Pe: Nat
+  for +k: Nat
+  for +w: Nat
+  for b1: Bound(Y, Nat.add(A, P), k)
+  for b2: Bound(P, Pe, w)
+  Bound2(Y, Nat.add(A, Pe), k, w)
+
+def compose(Y, A, P, Pe, k, w, b1, b2):
+  (l1, r1) = b1
+  (l2, r2) = b2
+  (compose.lo(Y, A, P, Pe, sh(1n, k), sh(1n, w), l1, l2), compose.hi(Y, A, P, Pe, sh(1n, k), sh(1n, w), r1, r2))
+
+# what a law says about x' = x + p against x + (the exact product): a
+# finite x' is within half of ulp(x') + ulp(p); a zero within half of
+# 2^u + ulp(p); an overflow carries no bound
+def Drift(v: Fmt.Val, +X: Nat, +u: Nat, +w: Nat) -> Type:
+  match v:
+    case Fmt.Z{n}:
+      Bound2(0n, X, u, w)
+    case Fmt.Inf{n}:
+      Unit
+    case Fmt.NaN{}:
+      Empty
+    case Fmt.Fin{n, R, +t}:
+      Bound2(sh(Bin.to_nat(R), t), X, t, w)
+
+law drift_fin:
+  for +R: Bin.Bin
+  for +t: Nat
+  for +A: Nat
+  for +P: Nat
+  for +Pe: Nat
+  for +w: Nat
+  for b2: Bound(P, Pe, w)
+  for h: Bound(sh(Bin.to_nat(R), t), Nat.add(A, P), t) & Nat.IsFalse(Bin.is_zero(R))
+  Bound2(sh(Bin.to_nat(R), t), Nat.add(A, Pe), t, w)
+
+def drift_fin(R, t, A, P, Pe, w, b2, h):
+  (b1, nz) = h
+  compose(sh(Bin.to_nat(R), t), A, P, Pe, t, w, b1, b2)
+
+law drift_of:
+  for v: Fmt.Val
+  for +A: Nat
+  for +P: Nat
+  for +Pe: Nat
+  for +u: Nat
+  for +w: Nat
+  for b2: Bound(P, Pe, w)
+  Near(v, Nat.add(A, P), u) -> Drift(v, Nat.add(A, Pe), u, w)
+
+def drift_of(v, A, P, Pe, u, w, b2):
+  match v:
+    case Fmt.Z{n}:
+      h => compose(0n, A, P, Pe, u, w, h, b2)
+    case Fmt.Inf{n}:
+      h => Unit{}
+    case Fmt.NaN{}:
+      h => h
+    case Fmt.Fin{n, +R, +t}:
+      h => drift_fin(R, t, A, P, Pe, w, b2, h)
+
+law recast:
+  for -p: F32
+  for +mp: Bin.Bin
+  for +tp: Nat
+  for +Pe: Nat
+  for +u: Nat
+  for dp: {SF32.decode(p) == Fmt.Fin{False{}, mp, tp} : Fmt.Val}
+  for h: Near(Fmt.canon(SF32.decode(p)), Pe, u)
+  Near(Fmt.canon(Fmt.Fin{False{}, mp, tp}), Pe, u)
+
+def recast(p, mp, tp, Pe, u, dp, h):
+  %dp : Near(Fmt.canon(_), Pe, u)
+  h
+
+# one Euler step x + v * dt on Base's F32, for positive finite x, v, dt
+# and a positive finite product: the result is within half of
+# ulp(x') + ulp(v * dt) of the exact x + v * dt (assuming HardOk)
+law hard_step_near:
+  for ~ok: SF32.HardOk()
+  for +x: F32
+  for +v: F32
+  for +dt: F32
+  for +mx: Bin.Bin
+  for +ex: Nat
+  for +mv: Bin.Bin
+  for +ev: Nat
+  for +md: Bin.Bin
+  for +ed: Nat
+  for +mp: Bin.Bin
+  for +tp: Nat
+  for dx: {SF32.decode(x) == Fmt.Fin{False{}, mx, ex} : Fmt.Val}
+  for dv: {SF32.decode(v) == Fmt.Fin{False{}, mv, ev} : Fmt.Val}
+  for ddt: {SF32.decode(dt) == Fmt.Fin{False{}, md, ed} : Fmt.Val}
+  for +dp: {SF32.decode(F32.mul(v, dt)) == Fmt.Fin{False{}, mp, tp} : Fmt.Val}
+  Drift(Fmt.canon(SF32.decode(F32.add(x, F32.mul(v, dt)))),
+    Nat.add(sh(Bin.to_nat(mx), ex), sh(Nat.mul(Bin.to_nat(mv), Bin.to_nat(md)), mul_exp(ev, ed))),
+    sum_lsb(Fmt.binary32(), mx, ex, mp, tp),
+    ulp_of(mp, tp, Fmt.lsb(Fmt.binary32(), Bin.mul(mv, md), mul_exp(ev, ed))))
+
+def hard_step_near(ok, x, v, dt, mx, ex, mv, ev, md, ed, mp, tp, dx, dv, ddt, dp):
+  +p = F32.mul(v, dt)
+  +Pe = sh(Nat.mul(Bin.to_nat(mv), Bin.to_nat(md)), mul_exp(ev, ed))
+  +u1 = Fmt.lsb(Fmt.binary32(), Bin.mul(mv, md), mul_exp(ev, ed))
+  +A = sh(Bin.to_nat(mx), ex)
+  +P = sh(Bin.to_nat(mp), tp)
+  drift_of(Fmt.canon(SF32.decode(F32.add(x, p))), A, P, Pe, sum_lsb(Fmt.binary32(), mx, ex, mp, tp), ulp_of(mp, tp, u1),
+    strip_val(False{}, mp, tp, Pe, u1)(recast(p, mp, tp, Pe, u1, dp, hard_mul_near(~ok, v, dt, False{}, mv, ev, False{}, md, ed, dv, ddt))))(
+    hard_add_near(~ok, x, p, False{}, mx, ex, mp, tp, dx, dp))
