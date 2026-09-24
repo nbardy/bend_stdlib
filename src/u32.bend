@@ -26,7 +26,7 @@ law cmp_bits:
   for y: Bool
   for a: Nat
   for b: Nat
-  {Word.cmp.fin(x, y, Nat.cmp(a, b)) == Nat.cmp(Nat.add(bit(x), Nat.double(a)), Nat.add(bit(y), Nat.double(b))) : Cmp}
+  {Nat.cmp(Nat.add(bit(x), Nat.double(a)), Nat.add(bit(y), Nat.double(b))) == Word.cmp.fin(x, y, Nat.cmp(a, b)) : Cmp}
 
 def cmp_bits(x, y, a, b):
   match x y a b:
@@ -63,6 +63,20 @@ def cmp_bits(x, y, a, b):
     case True{} True{} 1n+p 1n+q:
       cmp_bits(True{}, True{}, p, q)
 
+# one bit on top of rests whose comparison e already knows
+law cmp_bits.step:
+  for x: Bool
+  for y: Bool
+  for +a: Nat
+  for +b: Nat
+  for -c: Cmp
+  for e: {Nat.cmp(a, b) == c : Cmp}
+  {Nat.cmp(Nat.add(bit(x), Nat.double(a)), Nat.add(bit(y), Nat.double(b))) == Word.cmp.fin(x, y, c) : Cmp}
+
+def cmp_bits.step(x, y, a, b, c, e):
+  %e : {Nat.cmp(Nat.add(bit(x), Nat.double(a)), Nat.add(bit(y), Nat.double(b))) == Word.cmp.fin(x, y, _) : Cmp}
+  cmp_bits(x, y, a, b)
+
 law Word.cmp_nat:
   for +n: Nat
   for a: Word(n)
@@ -78,17 +92,13 @@ def Word.cmp_nat(n, a, b):
     case 1n+p:
       match a b:
         case WCon{False{}, +at} WCon{False{}, +bt}:
-          %Word.cmp_nat(p, at, bt) : {Nat.cmp(Nat.double(Word.to_nat(p, at)), Nat.double(Word.to_nat(p, bt))) == Word.cmp.fin(False{}, False{}, _) : Cmp}
-          Equal.sym(Cmp, Word.cmp.fin(False{}, False{}, Nat.cmp(Word.to_nat(p, at), Word.to_nat(p, bt))), Nat.cmp(Nat.double(Word.to_nat(p, at)), Nat.double(Word.to_nat(p, bt))), cmp_bits(False{}, False{}, Word.to_nat(p, at), Word.to_nat(p, bt)))
+          cmp_bits.step(False{}, False{}, Word.to_nat(p, at), Word.to_nat(p, bt), Word.cmp(p, at, bt), Word.cmp_nat(p, at, bt))
         case WCon{False{}, +at} WCon{True{}, +bt}:
-          %Word.cmp_nat(p, at, bt) : {Nat.cmp(Nat.double(Word.to_nat(p, at)), 1n+Nat.double(Word.to_nat(p, bt))) == Word.cmp.fin(False{}, True{}, _) : Cmp}
-          Equal.sym(Cmp, Word.cmp.fin(False{}, True{}, Nat.cmp(Word.to_nat(p, at), Word.to_nat(p, bt))), Nat.cmp(Nat.double(Word.to_nat(p, at)), 1n+Nat.double(Word.to_nat(p, bt))), cmp_bits(False{}, True{}, Word.to_nat(p, at), Word.to_nat(p, bt)))
+          cmp_bits.step(False{}, True{}, Word.to_nat(p, at), Word.to_nat(p, bt), Word.cmp(p, at, bt), Word.cmp_nat(p, at, bt))
         case WCon{True{}, +at} WCon{False{}, +bt}:
-          %Word.cmp_nat(p, at, bt) : {Nat.cmp(1n+Nat.double(Word.to_nat(p, at)), Nat.double(Word.to_nat(p, bt))) == Word.cmp.fin(True{}, False{}, _) : Cmp}
-          Equal.sym(Cmp, Word.cmp.fin(True{}, False{}, Nat.cmp(Word.to_nat(p, at), Word.to_nat(p, bt))), Nat.cmp(1n+Nat.double(Word.to_nat(p, at)), Nat.double(Word.to_nat(p, bt))), cmp_bits(True{}, False{}, Word.to_nat(p, at), Word.to_nat(p, bt)))
+          cmp_bits.step(True{}, False{}, Word.to_nat(p, at), Word.to_nat(p, bt), Word.cmp(p, at, bt), Word.cmp_nat(p, at, bt))
         case WCon{True{}, +at} WCon{True{}, +bt}:
-          %Word.cmp_nat(p, at, bt) : {Nat.cmp(1n+Nat.double(Word.to_nat(p, at)), 1n+Nat.double(Word.to_nat(p, bt))) == Word.cmp.fin(True{}, True{}, _) : Cmp}
-          Equal.sym(Cmp, Word.cmp.fin(True{}, True{}, Nat.cmp(Word.to_nat(p, at), Word.to_nat(p, bt))), Nat.cmp(1n+Nat.double(Word.to_nat(p, at)), 1n+Nat.double(Word.to_nat(p, bt))), cmp_bits(True{}, True{}, Word.to_nat(p, at), Word.to_nat(p, bt)))
+          cmp_bits.step(True{}, True{}, Word.to_nat(p, at), Word.to_nat(p, bt), Word.cmp(p, at, bt), Word.cmp_nat(p, at, bt))
 
 law cmp_nat:
   for a: U32
