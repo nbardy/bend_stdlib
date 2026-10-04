@@ -495,8 +495,9 @@ def bits_lt(lt, a, b, c, e):
   %lt(a, b) : {_ == c : Bool}
   e
 
-# Base's F32.min(a, b) is Bool.pick(F32.is_lt(a, b), a, b); as in
-# u32.bend, each .go lemma takes the test's result c and its equation.
+# Base's F32.min(a, b) opens a and b, then is Bool.pick(F32.is_lt(a, b), a, b);
+# as in u32.bend, callers match a and b first, and each .go lemma takes the
+# test's result c and its equation.
 
 law min_le_r.go:
   for ~lt: LtOk()
@@ -514,6 +515,19 @@ def min_le_r.go(lt, a, b, c, e, bb):
     case False{}:
       bb
 
+# min(a, b) <= b for every a
+law min_le_r:
+  for ~lt: LtOk()
+  for +a: F32
+  for +b: F32
+  for bb: LE(b, b)
+  LE(F32.min(a, b), b)
+
+def min_le_r(lt, a, b, bb):
+  match a b:
+    case F32{x} F32{y}:
+      min_le_r.go(~lt, F32{x}, F32{y}, F32.is_lt(F32{x}, F32{y}), {==}, bb)
+
 # clamp(x, lo, hi) <= hi for every x, NaN and infinities included
 law clamp_le_hi:
   for ~lt: LtOk()
@@ -524,8 +538,7 @@ law clamp_le_hi:
   LE(F32.clamp(x, lo, hi), hi)
 
 def clamp_le_hi(lt, x, lo, hi, lh):
-  +m = F32.max(x, lo)
-  min_le_r.go(~lt, m, hi, F32.is_lt(m, hi), {==}, le_refl.key(key(hi))(le_key_r(key(lo), key(hi))(lh)))
+  min_le_r(~lt, F32.max(x, lo), hi, le_refl.key(key(hi))(le_key_r(key(lo), key(hi))(lh)))
 
 law lo_le_clamp.go:
   for ~lt: LtOk()
@@ -550,6 +563,25 @@ def lo_le_clamp.go(lt, x, lo, hi, c1, e1, c2, e2, lh):
     case False{} False{}:
       lh
 
+law lo_le_clamp.go1:
+  for ~lt: LtOk()
+  for +x: F32
+  for +lo: F32
+  for +hi: F32
+  for c1: Bool
+  for e1: {F32.is_lt(x, lo) == c1 : Bool}
+  for lh: LE(lo, hi)
+  LE(lo, F32.min(Bool.pick(F32, c1, lo, x), hi))
+
+def lo_le_clamp.go1(lt, x, lo, hi, c1, e1, lh):
+  match x lo hi:
+    case F32{a} F32{b} F32{c}:
+      match c1:
+        case True{}:
+          lo_le_clamp.go(~lt, F32{a}, F32{b}, F32{c}, True{}, e1, F32.is_lt(F32{b}, F32{c}), {==}, lh)
+        case False{}:
+          lo_le_clamp.go(~lt, F32{a}, F32{b}, F32{c}, False{}, e1, F32.is_lt(F32{a}, F32{c}), {==}, lh)
+
 # lo <= clamp(x, lo, hi) for every x, when lo <= hi
 law lo_le_clamp:
   for ~lt: LtOk()
@@ -560,7 +592,9 @@ law lo_le_clamp:
   LE(lo, F32.clamp(x, lo, hi))
 
 def lo_le_clamp(lt, x, lo, hi, lh):
-  lo_le_clamp.go(~lt, x, lo, hi, F32.is_lt(x, lo), {==}, F32.is_lt(F32.max(x, lo), hi), {==}, lh)
+  match x lo:
+    case F32{a} F32{b}:
+      lo_le_clamp.go1(~lt, F32{a}, F32{b}, hi, F32.is_lt(F32{a}, F32{b}), {==}, lh)
 
 # Negation
 # --------

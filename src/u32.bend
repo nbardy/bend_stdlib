@@ -126,8 +126,9 @@ def is_lt_nat(a, b, c, e):
   %Equal.sym(Cmp, Nat.cmp(U32.to_nat(a), U32.to_nat(b)), U32.cmp(a, b), cmp_nat(a, b)) : {Cmp.is_lt(_) == c : Bool}
   e
 
-# Base's U32.min(a, b) is Bool.pick(U32.is_lt(a, b), a, b). A match cannot
-# inspect the computed test, so each .go lemma takes its result c and
+# Base's U32.min(a, b) opens a and b, then is Bool.pick(U32.is_lt(a, b), a, b)
+# (bend 2.0.33+), so callers match a and b first. A match cannot inspect the
+# computed test, so each .go lemma takes its result c and
 # {U32.is_lt(a, b) == c} as parameters; callers pass the test and {==}.
 
 law min_le_r.go:
@@ -151,7 +152,9 @@ law min_le_r:
   LE(U32.min(a, b), b)
 
 def min_le_r(a, b):
-  min_le_r.go(a, b, U32.is_lt(a, b), {==})
+  match a b:
+    case U32{x} U32{y}:
+      min_le_r.go(U32{x}, U32{y}, U32.is_lt(U32{x}, U32{y}), {==})
 
 law le_max_r.go:
   for +a: U32
@@ -174,7 +177,9 @@ law le_max_r:
   LE(b, U32.max(a, b))
 
 def le_max_r(a, b):
-  le_max_r.go(a, b, U32.is_lt(a, b), {==})
+  match a b:
+    case U32{x} U32{y}:
+      le_max_r.go(U32{x}, U32{y}, U32.is_lt(U32{x}, U32{y}), {==})
 
 # clamp(x, lo, hi) <= hi, even when lo > hi
 law clamp_le_hi:
@@ -202,6 +207,20 @@ def lo_le_clamp.go(lo, m, hi, lm, lh, c):
     case False{}:
       lh
 
+# lo <= min(m, hi) when lo <= m and lo <= hi
+law lo_le_min:
+  for +lo: U32
+  for +m: U32
+  for +hi: U32
+  for lm: LE(lo, m)
+  for lh: LE(lo, hi)
+  LE(lo, U32.min(m, hi))
+
+def lo_le_min(lo, m, hi, lm, lh):
+  match m hi:
+    case U32{x} U32{y}:
+      lo_le_clamp.go(lo, U32{x}, U32{y}, lm, lh, U32.is_lt(U32{x}, U32{y}))
+
 # lo <= clamp(x, lo, hi) when lo <= hi
 law lo_le_clamp:
   for +x: U32
@@ -211,7 +230,7 @@ law lo_le_clamp:
   LE(lo, U32.clamp(x, lo, hi))
 
 def lo_le_clamp(x, lo, hi, lh):
-  lo_le_clamp.go(lo, U32.max(x, lo), hi, le_max_r(x, lo), lh, U32.is_lt(U32.max(x, lo), hi))
+  lo_le_min(lo, U32.max(x, lo), hi, le_max_r(x, lo), lh)
 
 # Wrapping + and - undo each other
 # ---------------------------------

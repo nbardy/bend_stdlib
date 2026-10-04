@@ -18,7 +18,7 @@ echo "checker: $($BEND version 2>&1 | head -1)"
 
 # 1. every module and app checks on its own
 for f in src/*.bend src/*/*.bend apps/*.bend; do
-  if $BEND "$f" --check-only 2>&1 | grep -q '^All terms check\.$'; then
+  if $BEND "$f" --check-only 2>&1 | grep -Eq '^(All terms check\.|ALL PROOFS CHECK)$'; then
     say "$f" ok
   else
     say "$f" FAIL; $BEND "$f" --check-only 2>&1 | head -12; fail=1
